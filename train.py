@@ -116,8 +116,12 @@ if __name__ == "__main_":
                                     r_batch[k] + GAMMA * target_qso[k]))
                 y_i = np.reshape(y_i, (MINIBATCH_SIZE, 2))
 
+                # Update the networks each given the new target values
+                qsa_model.train(s_batch,y_i[:,0])
+                qso_model.train(s_batch,y_i[:,1])
+
                 # Update the critic given the targets
-                predicted_q_value, _ = critic.train(s_batch, a_batch, )
+                #predicted_q_value, _ = critic.train(s_batch, a_batch, y_i)
 
                 ep_ave_max_q += np.amax(predicted_q_value)
 
