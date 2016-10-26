@@ -62,9 +62,6 @@ if __name__ == "__main_":
                                      hidden1_size,hidden2_size,
                                      num_actions,num_objects)
 
-    # Initialize experience replay memory
-    replay_buffer = ExperienceReplay(BUFFER_SIZE, RANDOM_SEED)
-
     # Initialize replay memory
     replay_buffer = ReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
 
