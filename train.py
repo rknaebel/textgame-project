@@ -71,7 +71,8 @@ if __name__ == "__main_":
     # Train
     scores = []
     for e in range(MAX_EPISODES):
-        loss = 0.
+        loss1 = 0.
+        loss2 = 0.
         game_over = False
         # get initial input
         s_text = env.reset()
@@ -122,22 +123,8 @@ if __name__ == "__main_":
                 y_i = np.reshape(y_i, (MINIBATCH_SIZE, 2))
 
                 # Update the networks each given the new target values
-                qsa_model.train(s_batch,y_i[:,0])
-                qso_model.train(s_batch,y_i[:,1])
-
-                # Update the critic given the targets
-                #predicted_q_value, _ = critic.train(s_batch, a_batch, y_i)
-
-                #ep_ave_max_q += np.amax(predicted_q_value)
-
-                # Update the actor policy using the sampled gradient
-                #a_outs = actor.predict(s_batch)
-                #grads = critic.action_gradients(s_batch, a_outs)
-                #actor.train(s_batch, grads[0])
-
-                # Update target networks
-                #actor.update_target_network()
-                #critic.update_target_network()
+                loss1 += qsa_model.train_on_batch(s_batch,y_i[:,0])
+                loss2 += qso_model.train_on_batch(s_batch,y_i[:,1])
 
             s = s2
             ep_reward += r
@@ -149,17 +136,7 @@ if __name__ == "__main_":
 
                 break
 
-
-
-
-
-            # store experience
-            exp_replay.remember([s, action, reward, s2], game_over)
-
-            # adapt model
-            inputs, targets = exp_replay.get_batch(model, batch_size=batch_size)
-            loss += model.train_on_batch(inputs, targets)
-        print("Epoch {:03d}/{} | Loss {:.4f} | running avg {}".format(e, epoch, loss, scores[-1]))
+        print("Epoch {:03d}/{} | Loss qsa {:.4f} | Loss qso {:.4f}".format(e, epoch, loss1, loss2))
 
     # Save trained model weights and architecture, this will be used by the visualization code
     model.save_weights("model.h5", overwrite=True)
