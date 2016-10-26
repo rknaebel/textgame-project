@@ -3,19 +3,24 @@ from keras.layers import Input, Dense, Embedding, LSTM
 from keras.layers import AveragePooling1D, Reshape
 from keras.models import Model
 
+from keras.preprocessing.text import text_to_word_sequence
+
+indexer = dict()
+def getIndex(word):
+    if word not in indexer:
+        indexer[word] = len(indexer)+1
+    return indexer[word]
+
+def sent2seq(sentence,length):
+    seq = map(getIndex, text_to_word_sequence(sentence))
+    return seq + [0]*(length-len(seq))
+
 from replay_buffer import ReplayBuffer
 
 import gym
 import gym_textgame
 
-def getActionModel(in_size, hidden_size, action_size, object_size):
-    x = Input(shape=(in_size,))
-    y = Dense(hidden_size, activation="relu")(x)
-    q_sa = Dense(action_size)(y)
-    q_so = Dense(object_size)(y)
-    return q_sa, q_so
-
-def getModel(seq_length, vocab_size, embd_size, h1, h2, action_size, object_size):
+def getModels(seq_length, vocab_size, embd_size, h1, h2, action_size, object_size):
     x = Input(shape=(seq_length,), dtype="int32")
     # State Representation
     w_k = Embedding(output_dim=embd_size, input_dim=vocab_size, input_length=seq_length)(x)
@@ -50,9 +55,11 @@ if __name__ == "__main_":
     # action_space = Tuple(Discrete(5), Discrete(8))
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
+    vocab_size  = env.observation_space[0].n # !!TODO
+    seq_len     = env.observation_space[1].n # !!TODO
 
     qsa_model, qso_model = getModels(seq_len,vocab_size,embedding_size,
-                                     hidden1,hidden2,
+                                     hidden1_size,hidden2_size,
                                      num_actions,num_objects)
 
     # Initialize experience replay memory
@@ -65,31 +72,29 @@ if __name__ == "__main_":
     scores = []
     for e in range(MAX_EPISODES):
         loss = 0.
-        env.reset()
         game_over = False
         # get initial input
-        s = env.observe()
+        s_text = env.reset()
+        s = sent2seq(s_text)
+        #s = env.observe()
 
         for j in xrange(MAX_EP_STEPS):
             # show textual input if so
             if RENDER_ENV: env.render()
             # choose action
             if np.random.rand() <= epsilon:
-                act = np.random.randint(0, num_actions, size=1)
-                obj = np.random.randint(0, num_objects, size=1)
+                act = np.random.randint(0, num_actions)
+                obj = np.random.randint(0, num_objects)
                 a = (act,obj)
             else:
                 qsa = qsa_model.predict(s)
                 qso = qso_model.predict(s)
-                a = (np.argmax(qsa[0]), np,argmax(qso[0]))
+                a = (np.argmax(qsa[0]), np.argmax(qso[0]))
             # apply action, get rewards and new state s2
-            s2, r, terminal, info = env.step(a)
+            s2_text, r, terminal, info = env.step(a)
+            s2 = sent2seq(s2_text)
             # add current exp to buffer
-            replay_buffer.add(np.reshape(s, (actor.s_dim,)),
-                              np.reshape(a, (actor.a_dim,)),
-                              r,
-                              terminal,
-                              np.reshape(s2, (actor.s_dim,)))
+            replay_buffer.add(s, a, r, terminal, s2)
             #
 
 
@@ -123,29 +128,21 @@ if __name__ == "__main_":
                 # Update the critic given the targets
                 #predicted_q_value, _ = critic.train(s_batch, a_batch, y_i)
 
-                ep_ave_max_q += np.amax(predicted_q_value)
+                #ep_ave_max_q += np.amax(predicted_q_value)
 
                 # Update the actor policy using the sampled gradient
-                a_outs = actor.predict(s_batch)
-                grads = critic.action_gradients(s_batch, a_outs)
-                actor.train(s_batch, grads[0])
+                #a_outs = actor.predict(s_batch)
+                #grads = critic.action_gradients(s_batch, a_outs)
+                #actor.train(s_batch, grads[0])
 
                 # Update target networks
-                actor.update_target_network()
-                critic.update_target_network()
+                #actor.update_target_network()
+                #critic.update_target_network()
 
             s = s2
             ep_reward += r
 
             if terminal:
-
-                summary_str = sess.run(summary_ops, feed_dict={
-                    summary_vars[0]: ep_reward,
-                    summary_vars[1]: ep_ave_max_q / float(j)
-                })
-
-                writer.add_summary(summary_str, i)
-                writer.flush()
 
                 print '| Reward: %.2i' % int(ep_reward), " | Episode", i, \
                     '| Qmax: %.4f' % (ep_ave_max_q / float(j))
