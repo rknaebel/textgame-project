@@ -150,10 +150,10 @@ if __name__ == "__main__":
                 if terminal:
                     #print '| Reward: %.2i' % int(ep_reward)
                     break
-            avg_reward = ep_reward if not avg_reward else avg_reward * 0.99 + ep_reward * 0.01
-            if episode == EPISODES_PER_EPOCH-1: print "=>",
-            print("Episode {:03d}/{}/{} | Loss qsa {:.4f} | Loss qso {:.4f} | avg r {:.2f} | {}".format(
-                episode, EPISODES_PER_EPOCH, epoch, loss1, loss2, avg_reward,
+            avg_reward = ep_reward if not avg_reward else avg_reward * 0.9 + ep_reward * 0.1
+            print (">" if episode == EPISODES_PER_EPOCH-1 else " "),
+            print("Episode {}/{:03d}/{} | Loss qsa {:.4f} | Loss qso {:.4f} | avg r {:.2f} | {}".format(
+                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, avg_reward,
                 "X" if terminal else " "))
 
     # Save trained model weights and architecture, this will be used by the visualization code
