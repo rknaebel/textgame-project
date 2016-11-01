@@ -87,6 +87,9 @@ if __name__ == "__main__":
     scores = []
     for epoch in range(MAX_EPOCHS):
         avg_reward = 0.
+        #
+        # TRAIN Phase
+        #
         for episode in range(EPISODES_PER_EPOCH):
             loss1 = 0.
             loss2 = 0.
@@ -156,6 +159,40 @@ if __name__ == "__main__":
                 epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, avg_reward,
                 "X" if terminal else " "))
 
+        #
+        # EVAL Phase
+        #
+        scores = []
+        for episode in range(EPISODES_PER_EPOCH):
+            ep_reward = 0.
+            # get initial input
+            s_text = env.reset()
+            s = sent2seq(s_text, seq_len)
+            #
+            for j in xrange(MAX_EP_STEPS):
+                # show textual input if so
+                if RENDER_ENV: env.render()
+                # choose action
+                if np.random.rand() <= 0.05:
+                    act = np.random.randint(0, num_actions)
+                    obj = np.random.randint(0, num_objects)
+                    a = (act,obj)
+                else:
+                    qsa = qsa_model.predict(np.atleast_2d(s))
+                    qso = qso_model.predict(np.atleast_2d(s))
+                    a = (np.argmax(qsa[0]), np.argmax(qso[0]))
+                # apply action, get rewards and new state s2
+                s2_text, r, terminal, info = env.step(a)
+                s2 = sent2seq(s2_text, seq_len)
+
+                s = s2
+                ep_reward += r
+
+                if terminal: break
+
+            avg_reward = ep_reward if not avg_reward else avg_reward * 0.9 + ep_reward * 0.1
+        print("Evaluation {} | avg r {:.2f} ".format(
+            epoch+1, avg_reward))
     # Save trained model weights and architecture, this will be used by the visualization code
     qsa_model.save("qsa_model.h5", overwrite=True)
     qso_model.save("qso_model.h5", overwrite=True)
