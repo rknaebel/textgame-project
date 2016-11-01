@@ -84,15 +84,17 @@ if __name__ == "__main__":
     replay_buffer = PrioritizedReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
 
     # Train
-    scores = []
+    #scores = []
     for epoch in range(MAX_EPOCHS):
-        avg_reward = 0.
+        scores = []
         #
         # TRAIN Phase
         #
+        cnt_quest_complete = 0
         for episode in range(EPISODES_PER_EPOCH):
             loss1 = 0.
             loss2 = 0.
+            cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
             s_text = env.reset()
@@ -149,14 +151,16 @@ if __name__ == "__main__":
 
                 s = s2
                 ep_reward += r
+                cnt_invalid_actions += 1 if r == -0.1 else 0
 
                 if terminal:
+                    cnt_quest_complete += 1
                     #print '| Reward: %.2i' % int(ep_reward)
                     break
-            avg_reward = ep_reward if not avg_reward else avg_reward * 0.9 + ep_reward * 0.1
+            scores.append(ep_reward)
             print (">" if episode == EPISODES_PER_EPOCH-1 else " "),
-            print("Episode {}/{:03d}/{} | Loss qsa {:.4f} | Loss qso {:.4f} | avg r {:.2f} | {}".format(
-                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, avg_reward,
+            print("Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | quests {:02d} | avg_r {:.2f} | {}".format(
+                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, j+1, cnt_invalid_actions, cnt_quest_complete, np.mean(scores),
                 "X" if terminal else " "))
 
         #
@@ -190,9 +194,9 @@ if __name__ == "__main__":
 
                 if terminal: break
 
-            avg_reward = ep_reward if not avg_reward else avg_reward * 0.9 + ep_reward * 0.1
-        print("Evaluation {} | avg r {:.2f} ".format(
-            epoch+1, avg_reward))
+            scores.append(ep_reward)
+        print("=>Evaluation {} | avg r {:.2f} ".format(
+            epoch+1, np.mean(scores)))
     # Save trained model weights and architecture, this will be used by the visualization code
     qsa_model.save("qsa_model.h5", overwrite=True)
     qso_model.save("qso_model.h5", overwrite=True)
