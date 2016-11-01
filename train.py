@@ -1,9 +1,24 @@
+#!/usr/bin/python
+#
+# author: rknaebel
+#
+# description:
+#
+import numpy as np
 
+# KERAS: neural network lib
 from keras.layers import Input, Dense, Embedding, LSTM
 from keras.layers import AveragePooling1D, Reshape
+from keras.optimizers import RMSprop
 from keras.models import Model
 
 from keras.preprocessing.text import text_to_word_sequence
+
+from replay_buffer import PrioritizedReplayBuffer
+
+# GYM: Environment lib
+import gym
+import gym_textgame
 
 indexer = dict()
 def getIndex(word):
@@ -15,10 +30,6 @@ def sent2seq(sentence,length):
     seq = map(getIndex, text_to_word_sequence(sentence))
     return seq + [0]*(length-len(seq))
 
-from replay_buffer import ReplayBuffer
-
-import gym
-import gym_textgame
 
 def getModels(seq_length, vocab_size, embd_size, h1, h2, action_size, object_size):
     x = Input(shape=(seq_length,), dtype="int32")
@@ -37,105 +48,116 @@ def getModels(seq_length, vocab_size, embd_size, h1, h2, action_size, object_siz
 
     return m_sa, m_so
 
-if __name__ == "__main_":
-    BUFFER_SIZE = 500
+if __name__ == "__main__":
+    BUFFER_SIZE = 100000
     RANDOM_SEED = 42
+    MAX_EPOCHS = 100
     MAX_EPISODES = 100
-    MAX_EP_STEPS = 100
-    MINIBATCH_SIZE = 100
+    EPISODES_PER_EPOCH = 50
+    MAX_EP_STEPS = 20
+    MINIBATCH_SIZE = 64
+    RENDER_ENV = False
+    ROUNDS_PER_LEARN = 4
+    GAMMA = 0.5 # discount factor
+    EPSILON = .4  # exploration
+    ALPHA = 5e-4 # learning rate
 
-    # parameters
-    epsilon = .4  # exploration
-
-    embedding_size = 100
-    hidden1_size = 100
-    hidden2_size = 100
+    # layer sizes
+    embedding_size = 20
+    hidden1_size = 50
+    hidden2_size = 50
 
     env = gym.make("HomeWorld-v0")
     # action_space = Tuple(Discrete(5), Discrete(8))
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
-    vocab_size  = env.observation_space[0].n # !!TODO
-    seq_len     = env.observation_space[1].n # !!TODO
+    vocab_size  = env.vocab_space
+    seq_len     = 100
 
     qsa_model, qso_model = getModels(seq_len,vocab_size,embedding_size,
                                      hidden1_size,hidden2_size,
                                      num_actions,num_objects)
+    qsa_model.compile(loss="mse",optimizer=RMSprop(ALPHA))
+    qso_model.compile(loss="mse",optimizer=RMSprop(ALPHA))
 
     # Initialize replay memory
-    replay_buffer = ReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
+    replay_buffer = PrioritizedReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
 
     # Train
     scores = []
-    for e in range(MAX_EPISODES):
-        loss1 = 0.
-        loss2 = 0.
-        game_over = False
-        # get initial input
-        s_text = env.reset()
-        s = sent2seq(s_text)
-        #s = env.observe()
-
-        for j in xrange(MAX_EP_STEPS):
-            # show textual input if so
-            if RENDER_ENV: env.render()
-            # choose action
-            if np.random.rand() <= epsilon:
-                act = np.random.randint(0, num_actions)
-                obj = np.random.randint(0, num_objects)
-                a = (act,obj)
-            else:
-                qsa = qsa_model.predict(s)
-                qso = qso_model.predict(s)
-                a = (np.argmax(qsa[0]), np.argmax(qso[0]))
-            # apply action, get rewards and new state s2
-            s2_text, r, terminal, info = env.step(a)
-            s2 = sent2seq(s2_text)
-            # add current exp to buffer
-            replay_buffer.add(s, a, r, terminal, s2)
+    for epoch in range(MAX_EPOCHS):
+        avg_reward = 0.
+        for episode in range(EPISODES_PER_EPOCH):
+            loss1 = 0.
+            loss2 = 0.
+            ep_reward = 0.
+            # get initial input
+            s_text = env.reset()
+            s = sent2seq(s_text, seq_len)
             #
+            for j in xrange(MAX_EP_STEPS):
+                # show textual input if so
+                if RENDER_ENV: env.render()
+                # choose action
+                if np.random.rand() <= EPSILON:
+                    act = np.random.randint(0, num_actions)
+                    obj = np.random.randint(0, num_objects)
+                    a = (act,obj)
+                else:
+                    qsa = qsa_model.predict(np.atleast_2d(s))
+                    qso = qso_model.predict(np.atleast_2d(s))
+                    a = (np.argmax(qsa[0]), np.argmax(qso[0]))
+                # apply action, get rewards and new state s2
+                s2_text, r, terminal, info = env.step(a)
+                s2 = sent2seq(s2_text, seq_len)
+                # add current exp to buffer
+                replay_buffer.add(s, a, r, terminal, s2)
+                # Keep adding experience to the memory until
+                # there are at least minibatch size samples
+                if  ((replay_buffer.size() > MINIBATCH_SIZE) and
+                    (j % ROUNDS_PER_LEARN == 0)):
+                    s_batch, a_batch, r_batch, t_batch, s2_batch = \
+                        replay_buffer.sample_batch(MINIBATCH_SIZE)
 
+                    # split action tuple
+                    act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
 
-            # Keep adding experience to the memory until
-            # there are at least minibatch size samples
-            if replay_buffer.size() > MINIBATCH_SIZE:
-                s_batch, a_batch, r_batch, t_batch, s2_batch = \
-                    replay_buffer.sample_batch(MINIBATCH_SIZE)
+                    # Calculate targets
+                    target_qsa = qsa_model.predict(s_batch)
+                    target_qso = qso_model.predict(s_batch)
+                    qsa = qsa_model.predict(s2_batch).max(axis=1)
+                    qso = qso_model.predict(s2_batch).max(axis=1)
 
-                # split action tuple
-                act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
+                    # discount state values using the calculated targets
+                    y_i = []
+                    for k in xrange(MINIBATCH_SIZE):
+                        if t_batch[k]:
+                            # just the true reward if game is over
+                            target_qsa[k,act_batch[k]] = r_batch[k]
+                            target_qso[k,obj_batch[k]] = r_batch[k]
+                        else:
+                            # reward + gamma * max a'{ Q(s', a') }
+                            target_qsa[k,act_batch[k]] = r_batch[k] + GAMMA * qsa[k]
+                            target_qso[k,obj_batch[k]] = r_batch[k] + GAMMA * qso[k]
 
-                # Calculate targets
-                target_qsa = qsa_model.predict(s2_batch)
-                target_qso = qso_model.predict(s2_batch)
+                    # Update the networks each given the new target values
+                    loss1 += qsa_model.train_on_batch(s_batch,target_qsa)
+                    loss2 += qso_model.train_on_batch(s_batch,target_qso)
 
-                # discount state values using the calculated targets
-                y_i = []
-                for k in xrange(MINIBATCH_SIZE):
-                    if t_batch[k]:
-                        y_i.append((r_batch[k],r_batch[k]))
-                    else:
-                        y_i.append((r_batch[k] + GAMMA * target_qsa[k],
-                                    r_batch[k] + GAMMA * target_qso[k]))
-                y_i = np.reshape(y_i, (MINIBATCH_SIZE, 2))
+                s = s2
+                ep_reward += r
 
-                # Update the networks each given the new target values
-                loss1 += qsa_model.train_on_batch(s_batch,y_i[:,0])
-                loss2 += qso_model.train_on_batch(s_batch,y_i[:,1])
-
-            s = s2
-            ep_reward += r
-
-            if terminal:
-
-                print '| Reward: %.2i' % int(ep_reward), " | Episode", i, \
-                    '| Qmax: %.4f' % (ep_ave_max_q / float(j))
-
-                break
-
-        print("Epoch {:03d}/{} | Loss qsa {:.4f} | Loss qso {:.4f}".format(e, epoch, loss1, loss2))
+                if terminal:
+                    #print '| Reward: %.2i' % int(ep_reward)
+                    break
+            avg_reward = ep_reward if not avg_reward else avg_reward * 0.99 + ep_reward * 0.01
+            if episode == EPISODES_PER_EPOCH-1: print "=>",
+            print("Episode {:03d}/{}/{} | Loss qsa {:.4f} | Loss qso {:.4f} | avg r {:.2f} | {}".format(
+                episode, EPISODES_PER_EPOCH, epoch, loss1, loss2, avg_reward,
+                "X" if terminal else " "))
 
     # Save trained model weights and architecture, this will be used by the visualization code
-    model.save_weights("model.h5", overwrite=True)
-    with open("model.json", "w") as outfile:
-        json.dump(model.to_json(), outfile)
+    qsa_model.save("qsa_model.h5", overwrite=True)
+    qso_model.save("qso_model.h5", overwrite=True)
+    #with open("model.json", "w") as outfile:
+    #    json.dump(model.to_json(), outfile)
