@@ -158,15 +158,17 @@ if __name__ == "__main__":
                     #print '| Reward: %.2i' % int(ep_reward)
                     break
             scores.append(ep_reward)
-            print (">" if episode == EPISODES_PER_EPOCH-1 else " "),
-            print("Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | quests {:02d} | avg_r {:.2f} | {}".format(
-                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, j+1, cnt_invalid_actions, cnt_quest_complete, np.mean(scores),
+            print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | quests {:02d} | r {:.2f} | {}".format(
+                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, j+1, cnt_invalid_actions, cnt_quest_complete, scores[-1],
                 "X" if terminal else " "))
 
         #
         # EVAL Phase
-        #
+        #cd
         scores = []
+        ep_lens = []
+        invalids = []
+        quests_complete = []
         for episode in range(EPISODES_PER_EPOCH):
             ep_reward = 0.
             # get initial input
@@ -194,9 +196,15 @@ if __name__ == "__main__":
 
                 if terminal: break
 
+            ep_lens.append(j+1)
+            invalids.append(cnt_invalid_actions)
+            quests_complete.append(1 if terminal else 0)
             scores.append(ep_reward)
-        print("=>Evaluation {} | avg r {:.2f} ".format(
-            epoch+1, np.mean(scores)))
+        print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
+            epoch+1, np.mean(ep_lens),
+            np.mean(cnt_invalid_actions),
+            np.mean(cnt_quest_complete),
+            np.mean(scores)))
     # Save trained model weights and architecture, this will be used by the visualization code
     qsa_model.save("qsa_model.h5", overwrite=True)
     qso_model.save("qso_model.h5", overwrite=True)
