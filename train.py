@@ -59,10 +59,13 @@ if __name__ == "__main__":
     RENDER_ENV = False
     ROUNDS_PER_LEARN = 4
     GAMMA = 0.5 # discount factor
-    EPSILON = .4  # exploration
+    EPSILON_START = 1.  # exploration
+    EPSILON_END   = 0.2
+    EPSILON_ANNEAL_STEPS = 1e5
     ALPHA = 5e-4 # learning rate
 
     # layer sizes
+    epsilon = EPSILON_START
     embedding_size = 20
     hidden1_size = 50
     hidden2_size = 50
@@ -104,7 +107,7 @@ if __name__ == "__main__":
                 # show textual input if so
                 if RENDER_ENV: env.render()
                 # choose action
-                if np.random.rand() <= EPSILON:
+                if np.random.rand() <= epsilon:
                     act = np.random.randint(0, num_actions)
                     obj = np.random.randint(0, num_objects)
                     a = (act,obj)
@@ -112,6 +115,8 @@ if __name__ == "__main__":
                     qsa = qsa_model.predict(np.atleast_2d(s))
                     qso = qso_model.predict(np.atleast_2d(s))
                     a = (np.argmax(qsa[0]), np.argmax(qso[0]))
+                # anneal epsilon
+                epsilon = max(0.2, epsilon-(EPSILON_START-EPSILON_END)/ EPSILON_ANNEAL_STEPS)
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env.step(a)
                 s2 = sent2seq(s2_text, seq_len)
