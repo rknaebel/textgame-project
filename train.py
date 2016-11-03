@@ -160,7 +160,6 @@ if __name__ == "__main__":
 
                 if terminal:
                     cnt_quest_complete += 1
-                    #print '| Reward: %.2i' % int(ep_reward)
                     break
             scores.append(ep_reward)
             print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | quests {:02d} | r {:.2f} | {}".format(
