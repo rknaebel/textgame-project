@@ -91,6 +91,9 @@ if __name__ == "__main__":
     #scores = []
     for epoch in range(MAX_EPOCHS):
         scores = []
+        ep_lens = []
+        invalids = []
+        quests_complete = []
         #
         # TRAIN Phase
         #
