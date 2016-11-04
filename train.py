@@ -62,13 +62,14 @@ if __name__ == "__main__":
     EPSILON_START = 1.  # exploration
     EPSILON_END   = 0.2
     EPSILON_ANNEAL_STEPS = 1e5
+    EPSILON_STEP = (EPSILON_START-EPSILON_END)/EPSILON_ANNEAL_STEPS
     ALPHA = 5e-4 # learning rate
 
     # layer sizes
     epsilon = EPSILON_START
     embedding_size = 20
-    hidden1_size = 50
-    hidden2_size = 50
+    hidden1_size = 100
+    hidden2_size = 100
 
     env = gym.make("HomeWorld-v0")
     # action_space = Tuple(Discrete(5), Discrete(8))
@@ -116,7 +117,7 @@ if __name__ == "__main__":
                     qso = qso_model.predict(np.atleast_2d(s))
                     a = (np.argmax(qsa[0]), np.argmax(qso[0]))
                 # anneal epsilon
-                epsilon = max(0.2, epsilon-(EPSILON_START-EPSILON_END)/ EPSILON_ANNEAL_STEPS)
+                epsilon = max(0.2, epsilon-EPSILON_STEP)
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env.step(a)
                 s2 = sent2seq(s2_text, seq_len)
@@ -161,10 +162,20 @@ if __name__ == "__main__":
                 if terminal:
                     cnt_quest_complete += 1
                     break
+
+            ep_lens.append(j+1)
+            invalids.append(cnt_invalid_actions)
+            quests_complete.append(1 if terminal else 0)
             scores.append(ep_reward)
-            print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | quests {:02d} | r {:.2f} | {}".format(
-                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, j+1, cnt_invalid_actions, cnt_quest_complete, scores[-1],
-                "X" if terminal else " "))
+
+            print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | eps {:.4f} | r {: .2f} | {:02d}".format(
+                epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
+                quests_complete[-1]))
+        print("> Episode {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
+            epoch+1, np.mean(ep_lens),
+            np.mean(invalids),
+            np.mean(quests_complete),
+            np.mean(scores)))
 
         #
         # EVAL Phase
@@ -206,11 +217,11 @@ if __name__ == "__main__":
             scores.append(ep_reward)
         print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
             epoch+1, np.mean(ep_lens),
-            np.mean(cnt_invalid_actions),
-            np.mean(cnt_quest_complete),
+            np.mean(invalids),
+            np.mean(quests_complete),
             np.mean(scores)))
-    # Save trained model weights and architecture, this will be used by the visualization code
-    qsa_model.save("qsa_model.h5", overwrite=True)
-    qso_model.save("qso_model.h5", overwrite=True)
+        # Save trained model weights and architecture, this will be used by the visualization code
+        qsa_model.save("qsa_model.h5", overwrite=True)
+        qso_model.save("qso_model.h5", overwrite=True)
     #with open("model.json", "w") as outfile:
     #    json.dump(model.to_json(), outfile)
