@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 if RENDER_ENV: env.render()
                 # choose action
                 if np.random.rand() <= epsilon:
-                    a = model.randomAction()
+                    a = env.action_space.sample()
                 else:
                     a = model.predictAction(s)
                 # anneal epsilon
@@ -168,7 +168,7 @@ if __name__ == "__main__":
                 if RENDER_ENV: env.render()
                 # choose action
                 if np.random.rand() <= 0.05:
-                    a = model.randomAction()
+                    a = env.action_space.sample()
                 else:
                     a = model.predictAction(s)
                 # apply action, get rewards and new state s2
