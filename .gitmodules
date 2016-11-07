@@ -1,0 +1,3 @@
+[submodule "gym-textgame"]
+	path = gym-textgame
+	url = git@github.com:Rene90/gym-textgame
