@@ -6,7 +6,7 @@
 #
 import numpy as np
 
-from model import VanillaADM
+from model import NeuralQLearner
 from keras.preprocessing.text import text_to_word_sequence
 
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     EPISODES_PER_EPOCH = 50
     MAX_EP_STEPS = 20
     MINIBATCH_SIZE = 64 ## PAPER: 64
-    RENDER_ENV = False
+    RENDER_ENV = True
     ROUNDS_PER_LEARN = 4
     GAMMA = 0.5 # discount factor
     EPSILON_START = 1.  # exploration
@@ -56,9 +56,9 @@ if __name__ == "__main__":
     vocab_size  = env.vocab_space
     seq_len     = 100
 
-    model = VanillaADM( seq_len,vocab_size,embedding_size,
-                        hidden1_size,hidden2_size,
-                        num_actions,num_objects,ALPHA)
+    model = NeuralQLearner( seq_len,vocab_size,embedding_size,
+                            hidden1_size,hidden2_size,
+                            num_actions,num_objects,ALPHA,GAMMA,MINIBATCH_SIZE)
 
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
@@ -104,28 +104,8 @@ if __name__ == "__main__":
                     (j % ROUNDS_PER_LEARN == 0)):
                     s_batch, a_batch, r_batch, t_batch, s2_batch = \
                         replay_buffer.sample_batch(MINIBATCH_SIZE)
-
-                    # split action tuple
-                    act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
-
-                    # Calculate targets
-                    target_qsa, target_qso = model.predictQval(s_batch)
-                    qsa, qso = model.predictQmax(s2_batch)
-
-                    # discount state values using the calculated targets
-                    y_i = []
-                    for k in xrange(MINIBATCH_SIZE):
-                        if t_batch[k]:
-                            # just the true reward if game is over
-                            target_qsa[k,act_batch[k]] = r_batch[k]
-                            target_qso[k,obj_batch[k]] = r_batch[k]
-                        else:
-                            # reward + gamma * max a'{ Q(s', a') }
-                            target_qsa[k,act_batch[k]] = r_batch[k] + GAMMA * qsa[k]
-                            target_qso[k,obj_batch[k]] = r_batch[k] + GAMMA * qso[k]
-
                     # Update the networks each given the new target values
-                    l1, l2 = model.trainOnBatch(s_batch,target_qsa,target_qso)
+                    l1, l2 = model.trainOnBatch(s_batch, a_batch, r_batch, t_batch, s2_batch)
                     loss1 += l1; loss2 += l2
 
                 s = s2
