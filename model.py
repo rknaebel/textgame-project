@@ -12,7 +12,6 @@ from keras.layers import AveragePooling1D, Reshape
 from keras.optimizers import RMSprop
 from keras.models import Model
 
-from keras.preprocessing.text import text_to_word_sequence
 
 class ActionDecisionModel(object):
     pass
@@ -65,6 +64,11 @@ class VanillaADM(ActionDecisionModel):
         qsa, qso = self.predictQval(s)
         return (np.argmax(qsa[0]), np.argmax(qso[0]))
 
+    def randomAction(self):
+        act = np.random.randint(0, self.action_size)
+        obj = np.random.randint(0, self.object_size)
+        return (act,obj)
+
     def predictQmax(self,s):
         qsa, qso = self.predictQval(s)
         return (qsa.max(axis=1), qso.max(axis=1))
@@ -73,3 +77,7 @@ class VanillaADM(ActionDecisionModel):
         loss1 = self.qsa_model.train_on_batch(s_batch,target_qsa)
         loss2 = self.qso_model.train_on_batch(s_batch,target_qso)
         return loss1, loss2
+
+    def save(self,name,overwrite):
+        self.qsa_model.save("qsa_"+name, overwrite=overwrite)
+        self.qso_model.save("qso_"+name, overwrite=overwrite)

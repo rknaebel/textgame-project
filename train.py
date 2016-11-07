@@ -6,13 +6,9 @@
 #
 import numpy as np
 
-# KERAS: neural network lib
-from keras.layers import Input, Dense, Embedding, LSTM
-from keras.layers import AveragePooling1D, Reshape
-from keras.optimizers import RMSprop
-from keras.models import Model
-
+from model import VanillaADM
 from keras.preprocessing.text import text_to_word_sequence
+
 
 from replay_buffer import PrioritizedReplayBuffer
 
@@ -31,45 +27,27 @@ def sent2seq(sentence,length):
     return seq + [0]*(length-len(seq))
 
 
-def getModels(seq_length, vocab_size, embd_size, h1, h2, action_size, object_size):
-    x = Input(shape=(seq_length,), dtype="int32")
-    # State Representation
-    w_k = Embedding(output_dim=embd_size, input_dim=vocab_size, input_length=seq_length)(x)
-    x_k = LSTM(h1, return_sequences=True)(w_k)
-    y = AveragePooling1D(pool_length=seq_length, stride=None)(x_k)
-    v_s = Reshape((h1,))(y) # remove 2 axis which is 1 caused by averaging
-    # Q function approximation
-    q = Dense(h2, activation="relu")(v_s)
-    q_sa = Dense(action_size)(q)
-    q_so = Dense(object_size)(q)
-
-    m_sa = Model(x,q_sa)
-    m_so = Model(x,q_so)
-
-    return m_sa, m_so
-
 if __name__ == "__main__":
     BUFFER_SIZE = 100000
     RANDOM_SEED = 42
-    MAX_EPOCHS = 100
-    MAX_EPISODES = 100
+    MAX_EPOCHS = 50 # PAPER: 100
     EPISODES_PER_EPOCH = 50
     MAX_EP_STEPS = 20
-    MINIBATCH_SIZE = 64
+    MINIBATCH_SIZE = 64 ## PAPER: 64
     RENDER_ENV = False
     ROUNDS_PER_LEARN = 4
     GAMMA = 0.5 # discount factor
     EPSILON_START = 1.  # exploration
     EPSILON_END   = 0.2
-    EPSILON_ANNEAL_STEPS = 1e5
+    EPSILON_ANNEAL_STEPS = 5e4 ## PAPER: 1e5
     EPSILON_STEP = (EPSILON_START-EPSILON_END)/EPSILON_ANNEAL_STEPS
     ALPHA = 5e-4 # learning rate
 
     # layer sizes
     epsilon = EPSILON_START
     embedding_size = 20
-    hidden1_size = 100
-    hidden2_size = 100
+    hidden1_size = 50 ## PAPER: 100
+    hidden2_size = 50 ## PAPER: 100
 
     env = gym.make("HomeWorld-v0")
     # action_space = Tuple(Discrete(5), Discrete(8))
@@ -78,11 +56,9 @@ if __name__ == "__main__":
     vocab_size  = env.vocab_space
     seq_len     = 100
 
-    qsa_model, qso_model = getModels(seq_len,vocab_size,embedding_size,
-                                     hidden1_size,hidden2_size,
-                                     num_actions,num_objects)
-    qsa_model.compile(loss="mse",optimizer=RMSprop(ALPHA))
-    qso_model.compile(loss="mse",optimizer=RMSprop(ALPHA))
+    model = VanillaADM( seq_len,vocab_size,embedding_size,
+                        hidden1_size,hidden2_size,
+                        num_actions,num_objects,ALPHA)
 
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(BUFFER_SIZE, RANDOM_SEED)
@@ -112,13 +88,9 @@ if __name__ == "__main__":
                 if RENDER_ENV: env.render()
                 # choose action
                 if np.random.rand() <= epsilon:
-                    act = np.random.randint(0, num_actions)
-                    obj = np.random.randint(0, num_objects)
-                    a = (act,obj)
+                    a = model.randomAction()
                 else:
-                    qsa = qsa_model.predict(np.atleast_2d(s))
-                    qso = qso_model.predict(np.atleast_2d(s))
-                    a = (np.argmax(qsa[0]), np.argmax(qso[0]))
+                    a = model.predictAction(s)
                 # anneal epsilon
                 epsilon = max(0.2, epsilon-EPSILON_STEP)
                 # apply action, get rewards and new state s2
@@ -137,10 +109,8 @@ if __name__ == "__main__":
                     act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
 
                     # Calculate targets
-                    target_qsa = qsa_model.predict(s_batch)
-                    target_qso = qso_model.predict(s_batch)
-                    qsa = qsa_model.predict(s2_batch).max(axis=1)
-                    qso = qso_model.predict(s2_batch).max(axis=1)
+                    target_qsa, target_qso = model.predictQval(s_batch)
+                    qsa, qso = model.predictQmax(s2_batch)
 
                     # discount state values using the calculated targets
                     y_i = []
@@ -155,8 +125,8 @@ if __name__ == "__main__":
                             target_qso[k,obj_batch[k]] = r_batch[k] + GAMMA * qso[k]
 
                     # Update the networks each given the new target values
-                    loss1 += qsa_model.train_on_batch(s_batch,target_qsa)
-                    loss2 += qso_model.train_on_batch(s_batch,target_qso)
+                    l1, l2 = model.trainOnBatch(s_batch,target_qsa,target_qso)
+                    loss1 += l1; loss2 += l2
 
                 s = s2
                 ep_reward += r
@@ -174,7 +144,7 @@ if __name__ == "__main__":
             print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | eps {:.4f} | r {: .2f} | {:02d}".format(
                 epoch+1, episode+1, EPISODES_PER_EPOCH, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
                 quests_complete[-1]))
-        print("> Episode {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
+        print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
@@ -198,13 +168,9 @@ if __name__ == "__main__":
                 if RENDER_ENV: env.render()
                 # choose action
                 if np.random.rand() <= 0.05:
-                    act = np.random.randint(0, num_actions)
-                    obj = np.random.randint(0, num_objects)
-                    a = (act,obj)
+                    a = model.randomAction()
                 else:
-                    qsa = qsa_model.predict(np.atleast_2d(s))
-                    qso = qso_model.predict(np.atleast_2d(s))
-                    a = (np.argmax(qsa[0]), np.argmax(qso[0]))
+                    a = model.predictAction(s)
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env.step(a)
                 s2 = sent2seq(s2_text, seq_len)
@@ -224,7 +190,6 @@ if __name__ == "__main__":
             np.mean(quests_complete),
             np.mean(scores)))
         # Save trained model weights and architecture, this will be used by the visualization code
-        qsa_model.save("qsa_model.h5", overwrite=True)
-        qso_model.save("qso_model.h5", overwrite=True)
+        model.save("model.h5", overwrite=True)
     #with open("model.json", "w") as outfile:
     #    json.dump(model.to_json(), outfile)
