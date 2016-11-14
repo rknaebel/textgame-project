@@ -38,6 +38,7 @@ if __name__ == "__main__":
     epsilon_step = (args.epsilon_start-args.epsilon_end)/args.epsilon_anneal_steps
 
     env = gym.make("HomeWorld-v0")
+    env_eval = gym.make("HomeWorld-v0")
     # action_space = Tuple(Discrete(5), Discrete(8))
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
@@ -127,6 +128,8 @@ if __name__ == "__main__":
         for episode in range(args.episodes_per_epoch):
             ep_reward = 0.
             # get initial input
+            seed = random.random()
+            env_eval.seed(seed)
             s_text = env.reset()
             s = sent2seq(s_text, seq_len)
             #
