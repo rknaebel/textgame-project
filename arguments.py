@@ -15,6 +15,9 @@ parser.add_argument("--retrain", action="store_true", dest="retrain",
 parser.add_argument("--model", action="store", dest="model",
                     default="./model_checkpoints/savepoint.pkl")
 
+parser.add_argument("--csv", action="store", dest="csv",
+                    default="")
+
 parser.add_argument("--embd", action="store", dest="embd_size",
                     default=20, type=int)
 
