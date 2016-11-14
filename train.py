@@ -49,9 +49,10 @@ if __name__ == "__main__":
     seq_len     = 100
 
     if args.csv:
-        train_csv = open("{}_train.csv".format(args.csv), "wb")
-        eval_csv  = open("{}_eval.csv".format(args.csv), "wb")
-
+        train_csv_file = open("{}_train.csv".format(args.csv), "wb")
+        train_csv = csv.writer(train_csv_file)
+        eval_csv_file  = open("{}_eval.csv".format(args.csv), "wb")
+        eval_csv = csv.writer(eval_csv_file)
 
     model = NeuralQLearner( seq_len,vocab_size,
                             args.embd_size,args.hidden1,args.hidden2,
@@ -121,7 +122,7 @@ if __name__ == "__main__":
                 epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
                 quests_complete[-1]))
             if args.csv:
-                train_csv.write((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
+                train_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
                 quests_complete[-1]))
         print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
@@ -166,7 +167,7 @@ if __name__ == "__main__":
             scores.append(ep_reward)
             quests_complete.append(1 if terminal else 0)
             if args.csv:
-                eval_csv.write((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], scores[-1],
+                eval_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], scores[-1],
                 quests_complete[-1]))
         print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
             epoch+1, np.mean(ep_lens),
