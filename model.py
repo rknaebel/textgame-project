@@ -8,7 +8,7 @@ import numpy as np
 
 # KERAS: neural network lib
 from keras.layers import Input, Dense, Embedding, LSTM
-from keras.layers import AveragePooling1D, Reshape
+from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, Merge
 from keras.optimizers import RMSprop
 from keras.models import Model
 
@@ -108,13 +108,14 @@ class NeuralQLearner(ActionDecisionModel):
         self.qso_model.save("qso_"+name, overwrite=overwrite)
 
 class RNNQLearner(ActionDecisionModel):
-    def __init__(self,  seq_len, vocab_size, embedding_size,
+    def __init__(self,  seq_len, vocab_size, embedding_size, hist_size,
                         hidden1_size, hidden2_size,
                         num_actions, num_objects,
                         alpha,gamma,batch_size):
         self.seq_length = seq_len
         self.vocab_size = vocab_size
         self.embd_size = embedding_size
+        self.hist_size = hist_size
         self.h1 = hidden1_size
         self.h2 = hidden2_size
         self.action_size = num_actions
@@ -124,19 +125,23 @@ class RNNQLearner(ActionDecisionModel):
         self.gamma = gamma
         self.batch_size = batch_size
 
-        self.model = self.defineModel()
+        self.model, self.embedding = self.defineModels()
 
         self.model.compile(loss="mse",optimizer=RMSprop(alpha))
 
-    def defineModel(self):
+    def defineModels(self):
         x = Input(shape=(self.seq_length,), dtype="int32")
+        states = Input(shape=(self.hist_size,self.h1), dtype="int32")
         # State Representation
         w_k = Embedding(output_dim=self.embd_size,
                         input_dim=self.vocab_size,
                         input_length=self.seq_length)(x)
         x_k = LSTM(self.h1, return_sequences=True)(w_k)
-        y = AveragePooling1D(pool_length=self.seq_length, stride=None)(x_k)
-        v_s = Reshape((self.h1,))(y) # remove 2 axis which is 1 caused by averaging
+        v_s = GlobalAveragePooling1D()(x_k)
+        # History
+        history = LSTM(self.h1)(states)
+        # Merge History and Current State
+        combined = Merge(layers=[history,vs],concat_axis=1)
         # Q function approximation
         q = Dense(self.h2, activation="relu")(v_s)
         # action value
@@ -144,9 +149,13 @@ class RNNQLearner(ActionDecisionModel):
         # object value
         q_so = Dense(self.object_size)(q)
 
-        model = Model(input=x,output=[q_sa,q_so])
+        embd_model = Model(input=x,output=v_s)
+        q_model = Model(input=x,output=[q_sa,q_so])
 
-        return model
+        return q_model, embd_model
+
+    def embedStates(self, xs):
+        return [self.embd_model.predict(x) for x in xs]
 
     def predictQval(self,s):
         qsa, qso = self.model.predict(np.atleast_2d(s))
