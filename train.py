@@ -159,6 +159,7 @@ if __name__ == "__main__":
 
                 s = s2
                 ep_reward += r
+                cnt_invalid_actions += 1 if r == -0.1 else 0
 
                 if terminal: break
 
