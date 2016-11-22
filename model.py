@@ -131,26 +131,27 @@ class RNNQLearner(ActionDecisionModel):
 
     def defineModels(self):
         x = Input(shape=(self.seq_length,), dtype="int32")
-        states = Input(shape=(self.hist_size,self.h1), dtype="int32")
         # State Representation
         w_k = Embedding(output_dim=self.embd_size,
                         input_dim=self.vocab_size,
                         input_length=self.seq_length)(x)
         x_k = LSTM(self.h1, return_sequences=True)(w_k)
         v_s = GlobalAveragePooling1D()(x_k)
+        embd_model = Model(input=x,output=v_s)
+
+        # process sequences with 5 states each in 50dim embedding
+        states = Input(shape=(self.hist_size,self.h1), dtype="float32")
+        states_embd = TimeDistributed(embd_model)(states)
+
         # History
-        history = LSTM(self.h1)(states)
-        # Merge History and Current State
-        combined = Merge(layers=[history,vs],concat_axis=1)
+        history = LSTM(self.h1)(states_embd)
         # Q function approximation
         q = Dense(self.h2, activation="relu")(v_s)
         # action value
         q_sa = Dense(self.action_size)(q)
         # object value
         q_so = Dense(self.object_size)(q)
-
-        embd_model = Model(input=x,output=v_s)
-        q_model = Model(input=x,output=[q_sa,q_so])
+        q_model = Model(input=states,output=[q_sa,q_so])
 
         return q_model, embd_model
 
