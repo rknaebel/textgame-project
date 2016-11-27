@@ -8,6 +8,7 @@
 
 import numpy as np
 import random
+from collections import deque
 
 from model import RNNQLearner
 from keras.preprocessing.text import text_to_word_sequence
@@ -31,7 +32,7 @@ def sent2seq(sentence,length):
     return seq + [0]*(length-len(seq))
 
 def initHist(state,hist_size=5):
-    states = [np.zeros(state.shape, dtype="int") for _ in range(hist_size)]
+    states = [np.zeros(len(state), dtype="int") for _ in range(hist_size)]
     history = deque(states,hist_size)
     history.append(state)
     return history

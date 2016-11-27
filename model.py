@@ -9,6 +9,7 @@ import numpy as np
 # KERAS: neural network lib
 from keras.layers import Input, Dense, Embedding, LSTM
 from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, Merge
+from keras.layers import TimeDistributed
 from keras.optimizers import RMSprop
 from keras.models import Model
 
@@ -146,7 +147,7 @@ class RNNQLearner(ActionDecisionModel):
         q_sa = Dense(self.action_size)(q)
         # object value
         q_so = Dense(self.object_size)(q)
-        q_model = Model(input=states,output=[q_sa,q_so])
+        q_model = Model(input=x,output=[q_sa,q_so])
 
         return q_model, embd_model
 
