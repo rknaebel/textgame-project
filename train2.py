@@ -34,6 +34,12 @@ def initHist(state_len=20,hist_len=5):
     states = [[0]*state_len for _ in range(hist_len)]
     return deque(states,hist_len)
 
+from copy
+def addHistoryState(hist,state):
+    hist2 = copy.copy(hist)
+    hist2.append(state)
+    return hist2
+
 if __name__ == "__main__":
     args = getArguments()
 
@@ -75,9 +81,10 @@ if __name__ == "__main__":
             cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
-            hist = initHist()
+            h = initHist()
             s_text = env.reset()
             s = sent2seq(s_text, seq_len)
+            h.append(s) # TODO: Move this to init History function --> initHist(state,hist_len)
             #
             for j in xrange(20):
                 # show textual input if so
@@ -92,19 +99,21 @@ if __name__ == "__main__":
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env.step(a)
                 s2 = sent2seq(s2_text, seq_len)
+                h2 = addHistoryState(h,s2)
                 # add current exp to buffer
-                replay_buffer.add(s, a, r, terminal, s2)
+                replay_buffer.add(h, a, r, terminal, h2)
                 # Keep adding experience to the memory until
                 # there are at least minibatch size samples
                 if  ((replay_buffer.size() > args.batch_size) and
                     (j % 4 == 0)):
-                    s_batch, a_batch, r_batch, t_batch, s2_batch = \
+                    h_batch, a_batch, r_batch, t_batch, h2_batch = \
                         replay_buffer.sample_batch(args.batch_size)
                     # Update the networks each given the new target values
-                    l, l1, l2 = model.trainOnBatch(s_batch, a_batch, r_batch, t_batch, s2_batch)
+                    l, l1, l2 = model.trainOnBatch(h_batch, a_batch, r_batch, t_batch, h2_batch)
                     loss1 += l1; loss2 += l2
 
                 s = s2
+                h1 = h2
                 ep_reward += r
                 cnt_invalid_actions += 1 if r == -0.1 else 0
 
