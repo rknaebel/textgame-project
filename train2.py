@@ -30,11 +30,13 @@ def sent2seq(sentence,length):
     seq = map(getIndex, text_to_word_sequence(sentence))
     return seq + [0]*(length-len(seq))
 
-def initHist(state_len=20,hist_len=5):
-    states = [[0]*state_len for _ in range(hist_len)]
-    return deque(states,hist_len)
+def initHist(state,hist_size=5):
+    states = [np.zeros(state.shape, dtype="int") for _ in range(hist_size)]
+    history = deque(states,hist_size)
+    history.append(state)
+    return history
 
-from copy
+import copy
 def addHistoryState(hist,state):
     hist2 = copy.copy(hist)
     hist2.append(state)
@@ -54,8 +56,7 @@ if __name__ == "__main__":
     num_objects = env.action_space.spaces[1].n
     vocab_size  = env.vocab_space
     seq_len     = 200
-    hist_size   = 10
-
+    hist_size   = 3
 
     model = RNNQLearner(seq_len,vocab_size,args.embd_size,hist_size,
                         args.hidden1,args.hidden2,
@@ -81,10 +82,9 @@ if __name__ == "__main__":
             cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
-            h = initHist()
             s_text = env.reset()
             s = sent2seq(s_text, seq_len)
-            h.append(s) # TODO: Move this to init History function --> initHist(state,hist_len)
+            h = initHist(s,hist_size)
             #
             for j in xrange(20):
                 # show textual input if so
