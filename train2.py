@@ -30,6 +30,9 @@ def sent2seq(sentence,length):
     seq = map(getIndex, text_to_word_sequence(sentence))
     return seq + [0]*(length-len(seq))
 
+def initHist(state_len=20,hist_len=5):
+    states = [[0]*state_len for _ in range(hist_len)]
+    return deque(states,hist_len)
 
 if __name__ == "__main__":
     args = getArguments()
@@ -46,6 +49,7 @@ if __name__ == "__main__":
     vocab_size  = env.vocab_space
     seq_len     = 200
     hist_size   = 10
+
 
     model = RNNQLearner(seq_len,vocab_size,args.embd_size,hist_size,
                         args.hidden1,args.hidden2,
@@ -71,6 +75,7 @@ if __name__ == "__main__":
             cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
+            hist = initHist()
             s_text = env.reset()
             s = sent2seq(s_text, seq_len)
             #

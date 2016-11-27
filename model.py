@@ -151,7 +151,7 @@ class RNNQLearner(ActionDecisionModel):
         return q_model, embd_model
 
     def embedStates(self, xs):
-        return self.embd_model.predict(xs)
+        return self.embedding.predict(xs)
 
     def predictQval(self,s):
         qsa, qso = self.model.predict(np.atleast_2d(s))
