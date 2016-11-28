@@ -11,7 +11,7 @@ import csv
 import random
 
 
-from model import NeuralQLearner
+from models import NeuralQLearner
 from keras.preprocessing.text import text_to_word_sequence
 
 from replay_buffer import PrioritizedReplayBuffer

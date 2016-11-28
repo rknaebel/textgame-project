@@ -10,7 +10,7 @@ import numpy as np
 import random
 from collections import deque
 
-from model import RNNQLearner
+from models import RNNQLearner
 from keras.preprocessing.text import text_to_word_sequence
 
 from replay_buffer import PrioritizedReplayBuffer
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     num_objects = env.action_space.spaces[1].n
     vocab_size  = env.vocab_space
     seq_len     = 200
-    hist_size   = 3
+    hist_size   = args.history_size
 
     model = RNNQLearner(seq_len,vocab_size,args.embd_size,hist_size,
                         args.hidden1,args.hidden2,
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                 if np.random.rand() <= epsilon:
                     a = env.action_space.sample()
                 else:
-                    a = model.predictAction(s)
+                    a = model.predictAction(h)
                 # anneal epsilon
                 epsilon = max(0.2, epsilon-epsilon_step)
                 # apply action, get rewards and new state s2
@@ -151,6 +151,7 @@ if __name__ == "__main__":
             env_eval.seed(seed)
             s_text = env_eval.reset()
             s = sent2seq(s_text, seq_len)
+            h = initHist(s,hist_size)
             #
             for j in xrange(args.max_ep_steps):
                 # show textual input if so
@@ -159,12 +160,14 @@ if __name__ == "__main__":
                 if np.random.rand() <= 0.05:
                     a = env_eval.action_space.sample()
                 else:
-                    a = model.predictAction(s)
+                    a = model.predictAction(h)
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)
+                h2 = addHistoryState(h,s2)
 
                 s = s2
+                h = h2
                 ep_reward += r
                 cnt_invalid_actions += 1 if r == -0.1 else 0
 
