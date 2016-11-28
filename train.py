@@ -40,8 +40,8 @@ if __name__ == "__main__":
     epsilon = args.epsilon_start
     epsilon_step = (args.epsilon_start-args.epsilon_end)/args.epsilon_anneal_steps
 
-    env = gym.make("HomeWorld-v0")
-    env_eval = gym.make("HomeWorld-v0")
+    env = gym.make(args.env)
+    env_eval = gym.make(args.env)
     # action_space = Tuple(Discrete(5), Discrete(8))
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
