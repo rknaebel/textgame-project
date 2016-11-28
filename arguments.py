@@ -30,8 +30,11 @@ parser.add_argument("--h2", action="store", dest="hidden2",
 parser.add_argument("--buffer_size", action="store", dest="buffer_size",
                     default=100000, type=int)
 
-parser.add_argument("--random_size", action="store", dest="random_seed",
+parser.add_argument("--random_seed", action="store", dest="random_seed",
                     default=42, type=int)
+
+parser.add_argument("--history_size", action="store", dest="history_size",
+                    default=10, type=int)
 
 parser.add_argument("--max_epochs", action="store", dest="max_epochs",
                     default=100, type=int)
