@@ -73,18 +73,16 @@ class PrioritizedReplayBuffer(object):
         The right side of the deque contains the most recent experiences
         """
         self.buffer_size = buffer_size
-        self.buffer_pos = deque()
-        self.buffer_neg = deque()
+        self.buffer_pos = deque([],buffer_size)
+        self.buffer_neg = deque([],buffer_size)
         random.seed(random_seed)
 
     def add(self, s, a, r, t, s2):
         experience = (s, a, r, t, s2)
-        buffer = self.buffer_neg if t <= 0 else self.buffer_pos
-        if len(buffer) < self.buffer_size:
-            buffer.append(experience)
+        if r <= 0:
+            self.buffer_neg.append(experience)
         else:
-            buffer.popleft()
-            buffer.append(experience)
+            self.buffer_pos.append(experience)
 
     def size(self):
         return len(self.buffer_pos) + len(self.buffer_neg)
