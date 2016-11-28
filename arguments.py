@@ -18,6 +18,9 @@ parser.add_argument("--model", action="store", dest="model",
 parser.add_argument("--csv", action="store", dest="csv",
                     default="")
 
+parser.add_argument("--env", action="store", dest="env",
+                    default="HomeWorld-v0")
+
 parser.add_argument("--embd", action="store", dest="embd_size",
                     default=20, type=int)
 
