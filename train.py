@@ -46,7 +46,7 @@ if __name__ == "__main__":
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
     vocab_size  = env.vocab_space
-    seq_len     = 100
+    seq_len     = args.seq_len
 
     if args.csv:
         train_csv_file = open("{}_train.csv".format(args.csv), "wb")

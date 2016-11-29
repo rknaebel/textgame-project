@@ -41,9 +41,9 @@ class RNNQLearner(ActionDecisionModel):
         v_s = TimeDistributed(GlobalAveragePooling1D())(x_k)
         embd_model = Model(input=x,output=v_s)
         # History
-        history = LSTM(self.h1)(v_s)
+        q = LSTM(self.h2, activation="relu")(v_s)
         # Q function approximation
-        q = Dense(self.h2, activation="relu")(history)
+        # q = Dense(self.h2, activation="relu")(history)
         # action value
         q_sa = Dense(self.action_size)(q)
         # object value
