@@ -21,6 +21,9 @@ import gym_textgame
 
 from arguments import getArguments
 
+from datetime import datetime
+from elasticsearch import Elasticsearch
+
 indexer = dict()
 def getIndex(word):
     if word not in indexer:
@@ -43,8 +46,23 @@ def addHistoryState(hist,state):
     hist2.append(state)
     return hist2
 
+def initDB():
+    # elasticsearch
+    dt = datetime.now()
+    es_index = "rnn-" + dt.strftime("%y-%m-%d-%H-%M")
+    es = Elasticsearch()
+    return (es, es_index)
+
+def sendDocDB(handle,doc):
+    es, idx = handle
+    doc["timestamp"] = datetime.now()
+    #print idx, doc
+    es.index(index=idx, doc_type="textgame_result", body=doc)
+
 if __name__ == "__main__":
     args = getArguments()
+
+    es = initDB()
 
     # layer sizes
     epsilon = args.epsilon_start
@@ -56,7 +74,7 @@ if __name__ == "__main__":
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
     vocab_size  = env.vocab_space
-    seq_len     = 200
+    seq_len     = env.seq_length
     hist_size   = args.history_size
 
     model = RNNQLearner(seq_len,vocab_size,args.embd_size,hist_size,
@@ -77,6 +95,7 @@ if __name__ == "__main__":
         # TRAIN Phase
         #
         cnt_quest_complete = 0
+        tr_ctr = 0
         for episode in range(args.episodes_per_epoch):
             loss1 = 0.
             loss2 = 0.
@@ -87,7 +106,8 @@ if __name__ == "__main__":
             s = sent2seq(s_text, seq_len)
             h = initHist(s,hist_size)
             #
-            for j in xrange(20):
+            for j in xrange(args.max_ep_steps):
+                tr_ctr += 1
                 # show textual input if so
                 #if args.render: env.render()
                 # choose action
@@ -106,12 +126,13 @@ if __name__ == "__main__":
                 # Keep adding experience to the memory until
                 # there are at least minibatch size samples
                 if  ((replay_buffer.size() > args.batch_size) and
-                    (j % 4 == 0)):
+                    (tr_ctr % 4 == 0)):
                     h_batch, a_batch, r_batch, t_batch, h2_batch = \
                         replay_buffer.sample_batch(args.batch_size)
                     # Update the networks each given the new target values
                     l, l1, l2 = model.trainOnBatch(h_batch, a_batch, r_batch, t_batch, h2_batch)
                     loss1 += l1; loss2 += l2
+                    tr_ctr = 0
 
                 s = s2
                 h1 = h2
@@ -126,9 +147,14 @@ if __name__ == "__main__":
             deaths.append(1 if terminal and r<=0 else 0)
             scores.append(ep_reward)
 
-            print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:03d} | inval {:03d} | eps {:.4f} | r {: .2f} | {:1d} {:1d}".format(
-                epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
-                quests_complete[-1],deaths[-1]))
+            #print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:03d} | inval {:03d} | eps {:.4f} | r {: .2f} | {:1d} {:1d}".format(
+            #    epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
+            #    quests_complete[-1],deaths[-1]))
+            sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
+                            "length" : ep_lens[-1], "invalids" : invalids[-1],
+                            "epsilon" : epsilon, "reward" : scores[-1],
+                            "quest_complete" : quests_complete[-1],
+                            "death" : deaths[-1], "mode" : "train"})
         print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
@@ -179,6 +205,11 @@ if __name__ == "__main__":
             quests_complete.append(1 if terminal and r>=1 else 0)
             deaths.append(1 if terminal and r<=0 else 0)
             scores.append(ep_reward)
+            sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
+                            "length" : ep_lens[-1], "invalids" : invalids[-1],
+                            "epsilon" : 0.05, "reward" : scores[-1],
+                            "quest_complete" : quests_complete[-1],
+                            "death" : deaths[-1], "mode" : "eval"})
         print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
