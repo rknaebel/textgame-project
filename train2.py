@@ -49,15 +49,39 @@ def addHistoryState(hist,state):
 def initDB():
     # elasticsearch
     dt = datetime.now()
-    es_index = "rnn-" + dt.strftime("%y-%m-%d-%H-%M")
+    exp_id = "rnn-" + dt.strftime("%y-%m-%d-%H-%M")
+    rnn_id = "rnn_weights"
     es = Elasticsearch()
-    return (es, es_index)
+    return (es, exp_id, rnn_id)
 
 def sendDocDB(handle,doc):
-    es, idx = handle
-    doc["timestamp"] = datetime.now()
+    es, exp_id, _ = handle
+    doc["timestamp"] = datetime.utcnow()
+    doc["experiment"] = args.exp_id
+    #doc["model"] = model.model.get_config()
     #print idx, doc
-    es.index(index=idx, doc_type="textgame_result", body=doc)
+    es.index(index=exp_id, doc_type="textgame_result2", body=doc)
+
+def sendModelDB(handle,model):
+    es, _, _ = handle
+    model_idx = "model"
+    doc = vars(model)
+    doc["experiment"] = args.exp_id
+    es.index(index=model_idx, doc_type="model_config", body=doc)
+
+def sendWeigthsDB(handle,model):
+    es, exp_id, rnn_id = handle
+    doc = dict()
+    doc["timestamp"] = datetime.utcnow()
+    doc["experiment"] = args.exp_id
+    #for layer in model.model.layers[1:]:
+    #    doc[layer.name] = layer.get_weights()
+    doc["embedding"] = model.model.layers[1].get_weights()[0].tolist()
+    doc["rnn"] = model.model.layers[4].get_weights()[1].tolist()
+    doc["action"] = model.model.layers[5].get_weights()[0].tolist()
+    doc["object"] = model.model.layers[6].get_weights()[0].tolist()
+    #print idx, doc
+    es.index(index=rnn_id, doc_type="textgame_rnn_weight", body=doc)
 
 if __name__ == "__main__":
     args = getArguments()
@@ -85,6 +109,9 @@ if __name__ == "__main__":
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
 
+    sendModelDB(es,args)
+    #sendWeigthsDB(es,model)
+
     for epoch in range(args.max_epochs):
         scores = []
         ep_lens = []
@@ -99,11 +126,12 @@ if __name__ == "__main__":
         for episode in range(args.episodes_per_epoch):
             loss1 = 0.
             loss2 = 0.
+            plan = []
             cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
-            s_text = env.reset()
-            s = sent2seq(s_text, seq_len)
+            init_s_text = env.reset()
+            s = sent2seq(init_s_text, seq_len)
             h = initHist(s,hist_size)
             #
             for j in xrange(args.max_ep_steps):
@@ -115,6 +143,7 @@ if __name__ == "__main__":
                     a = env.action_space.sample()
                 else:
                     a = model.predictAction(h)
+                plan.append(env.env.get_action(a))
                 # anneal epsilon
                 epsilon = max(0.2, epsilon-epsilon_step)
                 # apply action, get rewards and new state s2
@@ -154,13 +183,16 @@ if __name__ == "__main__":
                             "length" : ep_lens[-1], "invalids" : invalids[-1],
                             "epsilon" : epsilon, "reward" : scores[-1],
                             "quest_complete" : quests_complete[-1],
-                            "death" : deaths[-1], "mode" : "train"})
+                            "death" : deaths[-1], "mode" : "train",
+                            "init_state" : init_s_text, "plan" : plan})
         print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(deaths),
             np.mean(scores)))
+
+        #sendWeigthsDB(es,model)
 
         #
         # EVAL Phase
@@ -170,13 +202,14 @@ if __name__ == "__main__":
         invalids = []
         quests_complete = []
         for episode in range(args.episodes_per_epoch):
+            plan = []
             ep_reward = 0.
             cnt_invalid_actions = 0
             # get initial input
             seed = random.random()
             env_eval.seed(seed)
-            s_text = env_eval.reset()
-            s = sent2seq(s_text, seq_len)
+            init_s_text = env_eval.reset()
+            s = sent2seq(init_s_text, seq_len)
             h = initHist(s,hist_size)
             #
             for j in xrange(args.max_ep_steps):
@@ -187,6 +220,7 @@ if __name__ == "__main__":
                     a = env_eval.action_space.sample()
                 else:
                     a = model.predictAction(h)
+                plan.append(env.env.get_action(a))
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)
@@ -209,7 +243,8 @@ if __name__ == "__main__":
                             "length" : ep_lens[-1], "invalids" : invalids[-1],
                             "epsilon" : 0.05, "reward" : scores[-1],
                             "quest_complete" : quests_complete[-1],
-                            "death" : deaths[-1], "mode" : "eval"})
+                            "death" : deaths[-1], "mode" : "eval",
+                            "init_state" : init_s_text, "plan" : plan})
         print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
