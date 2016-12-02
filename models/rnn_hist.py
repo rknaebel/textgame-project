@@ -1,7 +1,7 @@
 import numpy as np
 
 # KERAS: neural network lib
-from keras.layers import Input, Dense, Embedding, LSTM
+from keras.layers import Input, Dense, Embedding, LSTM, SimpleRNN
 from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, Merge
 from keras.layers import TimeDistributed
 from keras.optimizers import RMSprop
@@ -32,22 +32,19 @@ class RNNQLearner(ActionDecisionModel):
         self.model.compile(loss="mse",optimizer=RMSprop(alpha))
 
     def defineModels(self):
-        x = Input(shape=(self.hist_size,self.seq_length,), dtype="int32")
+        x = Input(shape=(self.hist_size,self.seq_length,), dtype="int32") # (STATES x SEQUENCE)
         # State Representation
-        w_k = TimeDistributed(Embedding(output_dim=self.embd_size,
+        w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
                         input_dim=self.vocab_size,
-                        input_length=self.seq_length))(x)
-        x_k = TimeDistributed(LSTM(self.h1, return_sequences=True))(w_k)
-        v_s = TimeDistributed(GlobalAveragePooling1D())(x_k)
+                        input_length=self.seq_length))(x) # (STATES x SEQUENCE x EMBEDDING)
+        v_s = TimeDistributed(LSTM(self.h1, activation="relu"))(w_k) # (STATES x H1)
         embd_model = Model(input=x,output=v_s)
-        # History
-        q = LSTM(self.h2, activation="relu")(v_s)
-        # Q function approximation
-        # q = Dense(self.h2, activation="relu")(history)
+        # history based Q function approximation
+        q = SimpleRNN(self.h2, activation="relu")(v_s) # (H2)
         # action value
-        q_sa = Dense(self.action_size)(q)
+        q_sa = Dense(self.action_size)(q) # (ACTIONS)
         # object value
-        q_so = Dense(self.object_size)(q)
+        q_so = Dense(self.object_size)(q) # (OBJECTS)
         q_model = Model(input=x,output=[q_sa,q_so])
 
         return q_model, embd_model
