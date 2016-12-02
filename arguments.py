@@ -18,6 +18,9 @@ parser.add_argument("--model", action="store", dest="model",
 parser.add_argument("--csv", action="store", dest="csv",
                     default="")
 
+parser.add_argument("--exp_id", action="store", dest="exp_id",
+                    default="")
+
 parser.add_argument("--env", action="store", dest="env",
                     default="HomeWorld-v0")
 
