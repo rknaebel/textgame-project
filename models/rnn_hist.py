@@ -36,15 +36,16 @@ class RNNQLearner(ActionDecisionModel):
         # State Representation
         w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
                         input_dim=self.vocab_size,
-                        input_length=self.seq_length))(x) # (STATES x SEQUENCE x EMBEDDING)
-        v_s = TimeDistributed(LSTM(self.h1, activation="relu"))(w_k) # (STATES x H1)
+                        input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
+        w_k = TimeDistributed(LSTM(self.h1, activation="relu", return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
+        v_s = TimeDistributed(LSTM(self.h1, activation="relu"), name="lstm2")(w_k) # (STATES x H1)
         embd_model = Model(input=x,output=v_s)
         # history based Q function approximation
-        q = SimpleRNN(self.h2, activation="relu")(v_s) # (H2)
+        q = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
         # action value
-        q_sa = Dense(self.action_size)(q) # (ACTIONS)
+        q_sa = Dense(self.action_size, name="action_dense")(q) # (ACTIONS)
         # object value
-        q_so = Dense(self.object_size)(q) # (OBJECTS)
+        q_so = Dense(self.object_size, name="object_dense")(q) # (OBJECTS)
         q_model = Model(input=x,output=[q_sa,q_so])
 
         return q_model, embd_model
