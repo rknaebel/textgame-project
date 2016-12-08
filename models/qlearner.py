@@ -31,10 +31,8 @@ class NeuralQLearner(ActionDecisionModel):
         self.gamma = gamma
         self.batch_size = batch_size
 
-        self.qsa_model, self.qso_model = self.defineModels()
-
-        self.qsa_model.compile(loss="mse",optimizer=RMSprop(alpha))
-        self.qso_model.compile(loss="mse",optimizer=RMSprop(alpha))
+        self.model = self.defineModels()
+        self.model.compile(loss="mse",optimizer=RMSprop(alpha))
 
     def defineModels(self):
         x = Input(shape=(self.seq_length,), dtype="int32")
@@ -43,8 +41,7 @@ class NeuralQLearner(ActionDecisionModel):
                         input_dim=self.vocab_size,
                         input_length=self.seq_length)(x)
         x_k = LSTM(self.h1, return_sequences=True)(w_k)
-        y = AveragePooling1D(pool_length=self.seq_length, stride=None)(x_k)
-        v_s = Reshape((self.h1,))(y) # remove 2 axis which is 1 caused by averaging
+        v_s = GlobalAveragePooling1D()(x_k)
         # Q function approximation
         q = Dense(self.h2, activation="relu")(v_s)
         # action value
@@ -52,15 +49,12 @@ class NeuralQLearner(ActionDecisionModel):
         # object value
         q_so = Dense(self.object_size)(q)
 
-        m_sa = Model(input=x,output=q_sa)
-        m_so = Model(input=x,output=q_so)
+        q_model = Model(input=x,output=[q_sa,q_so])
 
-        return m_sa, m_so
+        return q_model
 
     def predictQval(self,s):
-        qsa = self.qsa_model.predict(np.atleast_2d(s))
-        qso = self.qso_model.predict(np.atleast_2d(s))
-        return (qsa, qso)
+        return self.model.predict(np.atleast_2d(s))
 
     def predictAction(self,s):
         qsa, qso = self.predictQval(s)
@@ -95,10 +89,9 @@ class NeuralQLearner(ActionDecisionModel):
                 target_qsa[k,act_batch[k]] = r_batch[k] + self.gamma * qsa[k]
                 target_qso[k,obj_batch[k]] = r_batch[k] + self.gamma * qso[k]
 
-        loss1 = self.qsa_model.train_on_batch(s_batch,target_qsa)
-        loss2 = self.qso_model.train_on_batch(s_batch,target_qso)
+        loss, loss1, loss2 = self.model.train_on_batch(s_batch,[target_qsa,target_qso])
+
         return loss1, loss2
 
     def save(self,name,overwrite):
-        self.qsa_model.save("qsa_"+name, overwrite=overwrite)
-        self.qso_model.save("qso_"+name, overwrite=overwrite)
+        self.model.save("q_"+name, overwrite=overwrite)

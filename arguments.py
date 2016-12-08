@@ -24,8 +24,8 @@ parser.add_argument("--exp_id", action="store", dest="exp_id",
 parser.add_argument("--env", action="store", dest="env",
                     default="HomeWorld-v0")
 
-parser.add_argument("--sequence_len", action="store", dest="seq_len",
-                    default=100)
+#parser.add_argument("--sequence_len", action="store", dest="seq_len",
+#                    default=100)
 
 parser.add_argument("--embd", action="store", dest="embd_size",
                     default=20, type=int)

@@ -110,4 +110,5 @@ class PrioritizedReplayBuffer(object):
         return s_batch, a_batch, r_batch, t_batch, s2_batch
 
     def clear(self):
-        self.deque.clear()
+        self.buffer_pos.clear()
+        self.buffer_neg.clear()

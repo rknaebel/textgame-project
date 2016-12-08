@@ -46,7 +46,7 @@ if __name__ == "__main__":
     num_actions = env.action_space.spaces[0].n
     num_objects = env.action_space.spaces[1].n
     vocab_size  = env.vocab_space
-    seq_len     = args.seq_len
+    seq_len     = env.seq_length
 
     if args.csv:
         train_csv_file = open("{}_train.csv".format(args.csv), "wb")
@@ -118,9 +118,9 @@ if __name__ == "__main__":
             quests_complete.append(1 if terminal else 0)
             scores.append(ep_reward)
 
-            print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | eps {:.4f} | r {: .2f} | {:02d}".format(
-                epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
-                quests_complete[-1]))
+            #print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | eps {:.4f} | r {: .2f} | {:02d}".format(
+            #    epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
+            #    quests_complete[-1]))
             if args.csv:
                 train_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
                 quests_complete[-1]))
@@ -138,6 +138,7 @@ if __name__ == "__main__":
         invalids = []
         quests_complete = []
         for episode in range(args.episodes_per_epoch):
+            cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
             seed = random.random()
