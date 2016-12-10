@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
-
+    step_ctr = 0
     for epoch in range(args.max_epochs):
         scores = []
         ep_lens = []
@@ -81,6 +81,7 @@ if __name__ == "__main__":
             s = sent2seq(s_text, seq_len)
             #
             for j in xrange(args.max_ep_steps):
+                step_ctr += 0
                 # show textual input if so
                 if args.render: env.render()
                 # choose action
@@ -98,12 +99,13 @@ if __name__ == "__main__":
                 # Keep adding experience to the memory until
                 # there are at least minibatch size samples
                 if  ((replay_buffer.size() > args.batch_size) and
-                    (j % args.rounds_per_learn == 0)):
+                    (step_ctr % args.rounds_per_learn == 0)):
                     s_batch, a_batch, r_batch, t_batch, s2_batch = \
                         replay_buffer.sample_batch(args.batch_size)
                     # Update the networks each given the new target values
                     l1, l2 = model.trainOnBatch(s_batch, a_batch, r_batch, t_batch, s2_batch)
                     loss1 += l1; loss2 += l2
+                    step_ctr = 0
 
                 s = s2
                 ep_reward += r
@@ -143,19 +145,19 @@ if __name__ == "__main__":
             # get initial input
             seed = random.random()
             env_eval.seed(seed)
-            s_text = env.reset()
+            s_text = env_eval.reset()
             s = sent2seq(s_text, seq_len)
             #
             for j in xrange(args.max_ep_steps):
                 # show textual input if so
-                if args.render: env.render()
+                if args.render: env_eval.render()
                 # choose action
                 if np.random.rand() <= 0.05:
-                    a = env.action_space.sample()
+                    a = env_eval.action_space.sample()
                 else:
                     a = model.predictAction(s)
                 # apply action, get rewards and new state s2
-                s2_text, r, terminal, info = env.step(a)
+                s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)
 
                 s = s2
@@ -171,12 +173,10 @@ if __name__ == "__main__":
             if args.csv:
                 eval_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], scores[-1],
                 quests_complete[-1]))
-        print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {:.2f} ".format(
+        print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(scores)))
         # Save trained model weights and architecture, this will be used by the visualization code
         model.save("model.h5", overwrite=True)
-    #with open("model.json", "w") as outfile:
-    #    json.dump(model.to_json(), outfile)

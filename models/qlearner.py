@@ -9,7 +9,7 @@ import numpy as np
 # KERAS: neural network lib
 from keras.layers import Input, Dense, Embedding, LSTM
 from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, Merge
-from keras.optimizers import RMSprop
+from keras.optimizers import RMSprop, Adam, Nadam
 from keras.models import Model
 
 from ad_model import ActionDecisionModel
@@ -32,7 +32,7 @@ class NeuralQLearner(ActionDecisionModel):
         self.batch_size = batch_size
 
         self.model = self.defineModels()
-        self.model.compile(loss="mse",optimizer=RMSprop(alpha))
+        self.model.compile(loss="mse",optimizer=Nadam())
 
     def defineModels(self):
         x = Input(shape=(self.seq_length,), dtype="int32")

@@ -79,6 +79,7 @@ class PrioritizedReplayBuffer(object):
 
     def add(self, s, a, r, t, s2):
         experience = (s, a, r, t, s2)
+        # put transitions with negative reward in one buffer and positive ones in another
         if r <= 0:
             self.buffer_neg.append(experience)
         else:
