@@ -5,14 +5,13 @@
 # description:
 #
 
-
 import numpy as np
 import csv
 import random
 
-
-from models import NeuralQLearner
 from keras.preprocessing.text import text_to_word_sequence
+from models import NeuralQLearner
+from preprocess import sent2seq
 
 from replay_buffer import PrioritizedReplayBuffer
 
@@ -21,17 +20,6 @@ import gym
 import gym_textgame
 
 from arguments import getArguments
-
-indexer = dict()
-def getIndex(word):
-    if word not in indexer:
-        indexer[word] = len(indexer)+1
-    return indexer[word]
-
-def sent2seq(sentence,length):
-    seq = map(getIndex, text_to_word_sequence(sentence))
-    return seq + [0]*(length-len(seq))
-
 
 if __name__ == "__main__":
     args = getArguments()
@@ -42,9 +30,8 @@ if __name__ == "__main__":
 
     env = gym.make(args.env)
     env_eval = gym.make(args.env)
-    # action_space = Tuple(Discrete(5), Discrete(8))
-    num_actions = env.action_space.spaces[0].n
-    num_objects = env.action_space.spaces[1].n
+    num_actions = env.num_actions
+    num_objects = env.num_objects
     vocab_size  = env.vocab_space
     seq_len     = env.seq_length
 
@@ -72,8 +59,7 @@ if __name__ == "__main__":
         #
         cnt_quest_complete = 0
         for episode in range(args.episodes_per_epoch):
-            loss1 = 0.
-            loss2 = 0.
+            loss = 0.
             cnt_invalid_actions = 0
             ep_reward = 0.
             # get initial input
@@ -86,7 +72,7 @@ if __name__ == "__main__":
                 if args.render: env.render()
                 # choose action
                 if np.random.rand() <= epsilon:
-                    a = env.action_space.sample()
+                    a = model.randomAction()
                 else:
                     a = model.predictAction(s)
                 # anneal epsilon
@@ -103,8 +89,8 @@ if __name__ == "__main__":
                     s_batch, a_batch, r_batch, t_batch, s2_batch = \
                         replay_buffer.sample_batch(args.batch_size)
                     # Update the networks each given the new target values
-                    l1, l2 = model.trainOnBatch(s_batch, a_batch, r_batch, t_batch, s2_batch)
-                    loss1 += l1; loss2 += l2
+                    l = model.trainOnBatch(s_batch, a_batch, r_batch, t_batch, s2_batch)
+                    loss += l
                     step_ctr = 0
 
                 s = s2
@@ -120,11 +106,8 @@ if __name__ == "__main__":
             quests_complete.append(1 if terminal else 0)
             scores.append(ep_reward)
 
-            #print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:02d} | inval {:02d} | eps {:.4f} | r {: .2f} | {:02d}".format(
-            #    epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
-            #    quests_complete[-1]))
             if args.csv:
-                train_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
+                train_csv.writerow((epoch+1, episode+1, args.episodes_per_epoch, loss, ep_lens[-1], invalids[-1], epsilon, scores[-1],
                 quests_complete[-1]))
         print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),

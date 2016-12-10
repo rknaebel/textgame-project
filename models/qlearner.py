@@ -7,8 +7,9 @@
 import numpy as np
 
 # KERAS: neural network lib
+import keras.backend as K
 from keras.layers import Input, Dense, Embedding, LSTM
-from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, Merge
+from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, merge
 from keras.optimizers import RMSprop, Adam, Nadam
 from keras.models import Model
 
@@ -35,7 +36,7 @@ class NeuralQLearner(ActionDecisionModel):
         self.model.compile(loss="mse",optimizer=Nadam())
 
     def defineModels(self):
-        x = Input(shape=(self.seq_length,), dtype="int32")
+        x = Input(shape=(self.seq_length,), dtype="uint8")
         # State Representation
         w_k = Embedding(output_dim=self.embd_size,
                         input_dim=self.vocab_size,
@@ -43,13 +44,17 @@ class NeuralQLearner(ActionDecisionModel):
         x_k = LSTM(self.h1, return_sequences=True)(w_k)
         v_s = GlobalAveragePooling1D()(x_k)
         # Q function approximation
-        q = Dense(self.h2, activation="relu")(v_s)
+        q_hidden = Dense(self.h2, activation="relu")(v_s)
         # action value
-        q_sa = Dense(self.action_size)(q)
+        qsa = Dense(self.action_size)(q_hidden)
         # object value
-        q_so = Dense(self.object_size)(q)
+        qso = Dense(self.object_size)(q_hidden)
 
-        q_model = Model(input=x,output=[q_sa,q_so])
+        q = merge(  [qsa,qso],
+                    mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
+                    output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
+
+        q_model = Model(input=x,output=q)
 
         return q_model
 
@@ -57,8 +62,8 @@ class NeuralQLearner(ActionDecisionModel):
         return self.model.predict(np.atleast_2d(s))
 
     def predictAction(self,s):
-        qsa, qso = self.predictQval(s)
-        return (np.argmax(qsa[0]), np.argmax(qso[0]))
+        q = self.predictQval(s)[0]
+        return np.unravel_index(q.argmax(),q.shape)
 
     def randomAction(self):
         act = np.random.randint(0, self.action_size)
@@ -66,32 +71,30 @@ class NeuralQLearner(ActionDecisionModel):
         return (act,obj)
 
     def predictQmax(self,s):
-        qsa, qso = self.predictQval(s)
-        return (qsa.max(axis=1), qso.max(axis=1))
+        q = self.predictQval(s)
+        return q.max(axis=(1,2))
 
     def trainOnBatch(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
         # split action tuple
         act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
 
         # Calculate targets
-        target_qsa, target_qso = self.predictQval(s_batch)
-        qsa, qso = self.predictQmax(s2_batch)
-
+        target = self.predictQval(s_batch)
+        qmax = self.predictQmax(s2_batch)
         # discount state values using the calculated targets
         y_i = []
         for k in xrange(self.batch_size):
+            a,o = act_batch[k],obj_batch[k]
             if t_batch[k]:
                 # just the true reward if game is over
-                target_qsa[k,act_batch[k]] = r_batch[k]
-                target_qso[k,obj_batch[k]] = r_batch[k]
+                target[k,a,o] = r_batch[k]
             else:
                 # reward + gamma * max a'{ Q(s', a') }
-                target_qsa[k,act_batch[k]] = r_batch[k] + self.gamma * qsa[k]
-                target_qso[k,obj_batch[k]] = r_batch[k] + self.gamma * qso[k]
+                target[k,a,o] = r_batch[k] + self.gamma * qmax[k]
 
-        loss, loss1, loss2 = self.model.train_on_batch(s_batch,[target_qsa,target_qso])
+        loss = self.model.train_on_batch(s_batch,target)
 
-        return loss1, loss2
+        return loss
 
     def save(self,name,overwrite):
         self.model.save("q_"+name, overwrite=overwrite)
