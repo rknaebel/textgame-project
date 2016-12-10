@@ -4,84 +4,19 @@
 #
 # description:
 #
-
-
 import numpy as np
 import random
-from collections import deque
-
-from models import RNNQLearner
-from keras.preprocessing.text import text_to_word_sequence
-
-from replay_buffer import PrioritizedReplayBuffer
 
 # GYM: Environment lib
 import gym
 import gym_textgame
 
+from models import HistoryQLearner
+from replay_buffer import PrioritizedReplayBuffer
+from preprocess import sent2seq, initHist, addHistoryState
+
 from arguments import getArguments
-
-from datetime import datetime
-from elasticsearch import Elasticsearch
-
-indexer = dict()
-def getIndex(word):
-    if word not in indexer:
-        indexer[word] = len(indexer)+1
-    return indexer[word]
-
-def sent2seq(sentence,length):
-    seq = map(getIndex, text_to_word_sequence(sentence))
-    return seq + [0]*(length-len(seq))
-
-def initHist(state,hist_size=5):
-    states = [np.zeros(len(state), dtype="int") for _ in range(hist_size)]
-    history = deque(states,hist_size)
-    history.append(state)
-    return history
-
-import copy
-def addHistoryState(hist,state):
-    hist2 = copy.copy(hist)
-    hist2.append(state)
-    return hist2
-
-def initDB():
-    # elasticsearch
-    dt = datetime.now()
-    exp_id = "rnn-" + dt.strftime("%y-%m-%d-%H-%M")
-    rnn_id = "rnn_weights"
-    es = Elasticsearch()
-    return (es, exp_id, rnn_id)
-
-def sendDocDB(handle,doc):
-    es, exp_id, _ = handle
-    doc["timestamp"] = datetime.utcnow()
-    doc["experiment"] = args.exp_id
-    #doc["model"] = model.model.get_config()
-    #print idx, doc
-    es.index(index=exp_id, doc_type="textgame_result2", body=doc)
-
-def sendModelDB(handle,model):
-    es, _, _ = handle
-    model_idx = "model"
-    doc = vars(model)
-    doc["experiment"] = args.exp_id
-    es.index(index=model_idx, doc_type="model_config", body=doc)
-
-def sendWeigthsDB(handle,model):
-    es, exp_id, rnn_id = handle
-    doc = dict()
-    doc["timestamp"] = datetime.utcnow()
-    doc["experiment"] = args.exp_id
-    #for layer in model.model.layers[1:]:
-    #    doc[layer.name] = layer.get_weights()
-    doc["embedding"] = model.model.layers[1].get_weights()[0].tolist()
-    doc["rnn"] = model.model.layers[4].get_weights()[1].tolist()
-    doc["action"] = model.model.layers[5].get_weights()[0].tolist()
-    doc["object"] = model.model.layers[6].get_weights()[0].tolist()
-    #print idx, doc
-    es.index(index=rnn_id, doc_type="textgame_rnn_weight", body=doc)
+from utils import initDB, sendDocDB, sendModelDB
 
 if __name__ == "__main__":
     args = getArguments()
@@ -94,24 +29,23 @@ if __name__ == "__main__":
 
     env = gym.make(args.env)
     env_eval = gym.make(args.env)
-    # action_space = Tuple(Discrete(5), Discrete(8))
-    num_actions = env.action_space.spaces[0].n
-    num_objects = env.action_space.spaces[1].n
+    num_actions = env.num_actions
+    num_objects = env.num_objects
     vocab_size  = env.vocab_space
     seq_len     = env.seq_length
     hist_size   = args.history_size
 
-    model = RNNQLearner(seq_len,vocab_size,args.embd_size,hist_size,
+    model = HistoryQLearner(seq_len,vocab_size,args.embd_size,hist_size,
                         args.hidden1,args.hidden2,
                         num_actions,num_objects,
-                        args.alpha,args.gamma,args.batch_size)
+                        args.alpha,args.gamma)
 
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
 
-    sendModelDB(es,args)
+    sendModelDB(es,args,args.exp_id)
     #sendWeigthsDB(es,model)
-
+    step_ctr = 0
     for epoch in range(args.max_epochs):
         scores = []
         ep_lens = []
@@ -121,11 +55,8 @@ if __name__ == "__main__":
         #
         # TRAIN Phase
         #
-        cnt_quest_complete = 0
-        tr_ctr = 0
         for episode in range(args.episodes_per_epoch):
-            loss1 = 0.
-            loss2 = 0.
+            loss = 0.
             plan = []
             cnt_invalid_actions = 0
             ep_reward = 0.
@@ -135,15 +66,15 @@ if __name__ == "__main__":
             h = initHist(s,hist_size)
             #
             for j in xrange(args.max_ep_steps):
-                tr_ctr += 1
+                step_ctr += 1
                 # show textual input if so
                 #if args.render: env.render()
                 # choose action
                 if np.random.rand() <= epsilon:
-                    a = env.action_space.sample()
+                    a = model.randomAction()
                 else:
                     a = model.predictAction(h)
-                plan.append(env.env.get_action(a))
+                plan.append(env.get_action(a))
                 # anneal epsilon
                 epsilon = max(0.2, epsilon-epsilon_step)
                 # apply action, get rewards and new state s2
@@ -155,13 +86,13 @@ if __name__ == "__main__":
                 # Keep adding experience to the memory until
                 # there are at least minibatch size samples
                 if  ((replay_buffer.size() > args.batch_size) and
-                    (tr_ctr % 4 == 0)):
+                    (step_ctr % args.rounds_per_learn == 0)):
                     h_batch, a_batch, r_batch, t_batch, h2_batch = \
                         replay_buffer.sample_batch(args.batch_size)
                     # Update the networks each given the new target values
-                    l, l1, l2 = model.trainOnBatch(h_batch, a_batch, r_batch, t_batch, h2_batch)
-                    loss1 += l1; loss2 += l2
-                    tr_ctr = 0
+                    l = model.trainOnBatch(h_batch, a_batch, r_batch, t_batch, h2_batch)
+                    loss += l
+                    step_ctr = 0
 
                 s = s2
                 h1 = h2
@@ -172,27 +103,22 @@ if __name__ == "__main__":
 
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
-            quests_complete.append(1 if terminal and r>=1 else 0)
-            deaths.append(1 if terminal and r<=0 else 0)
+            quests_complete.append(int(terminal and r >= 1))
+            deaths.append(int(terminal and r <= 0))
             scores.append(ep_reward)
 
-            #print("  Episode {:03d}/{:03d}/{:03d} | L(qsa) {:.4f} | L(qso) {:.4f} | len {:03d} | inval {:03d} | eps {:.4f} | r {: .2f} | {:1d} {:1d}".format(
-            #    epoch+1, episode+1, args.episodes_per_epoch, loss1, loss2, ep_lens[-1], invalids[-1], epsilon, scores[-1],
-            #    quests_complete[-1],deaths[-1]))
             sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
                             "length" : ep_lens[-1], "invalids" : invalids[-1],
                             "epsilon" : epsilon, "reward" : scores[-1],
                             "quest_complete" : quests_complete[-1],
                             "death" : deaths[-1], "mode" : "train",
-                            "init_state" : init_s_text, "plan" : plan})
+                            "init_state" : init_s_text, "plan" : plan}, args.exp_id)
         print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(deaths),
             np.mean(scores)))
-
-        #sendWeigthsDB(es,model)
 
         #
         # EVAL Phase
@@ -217,10 +143,10 @@ if __name__ == "__main__":
                 if args.render: env_eval.render()
                 # choose action
                 if np.random.rand() <= 0.05:
-                    a = env_eval.action_space.sample()
+                    a = model.randomAction()
                 else:
                     a = model.predictAction(h)
-                plan.append(env.env.get_action(a))
+                plan.append(env.get_action(a))
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)
@@ -236,15 +162,15 @@ if __name__ == "__main__":
 
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
-            quests_complete.append(1 if terminal and r>=1 else 0)
-            deaths.append(1 if terminal and r<=0 else 0)
+            quests_complete.append(int(terminal and r >= 1))
+            deaths.append(int(terminal and r <= 0))
             scores.append(ep_reward)
             sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
                             "length" : ep_lens[-1], "invalids" : invalids[-1],
                             "epsilon" : 0.05, "reward" : scores[-1],
                             "quest_complete" : quests_complete[-1],
                             "death" : deaths[-1], "mode" : "eval",
-                            "init_state" : init_s_text, "plan" : plan})
+                            "init_state" : init_s_text, "plan" : plan}, args.exp_id)
         print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
