@@ -9,7 +9,7 @@ import numpy as np
 # KERAS: neural network lib
 import keras.backend as K
 from keras.layers import Input, Dense, Embedding, LSTM
-from keras.layers import AveragePooling1D, Reshape, GlobalAveragePooling1D, merge
+from keras.layers import GlobalAveragePooling1D, merge
 from keras.optimizers import RMSprop, Adam, Nadam
 from keras.models import Model
 
