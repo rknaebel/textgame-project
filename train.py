@@ -9,7 +9,6 @@ import numpy as np
 import csv
 import random
 
-from keras.preprocessing.text import text_to_word_sequence
 from models import NeuralQLearner
 from preprocess import sent2seq
 
@@ -57,7 +56,6 @@ if __name__ == "__main__":
         #
         # TRAIN Phase
         #
-        cnt_quest_complete = 0
         for episode in range(args.episodes_per_epoch):
             loss = 0.
             cnt_invalid_actions = 0
@@ -67,7 +65,7 @@ if __name__ == "__main__":
             s = sent2seq(s_text, seq_len)
             #
             for j in xrange(args.max_ep_steps):
-                step_ctr += 0
+                step_ctr += 1
                 # show textual input if so
                 if args.render: env.render()
                 # choose action
@@ -96,14 +94,11 @@ if __name__ == "__main__":
                 s = s2
                 ep_reward += r
                 cnt_invalid_actions += 1 if r == -0.1 else 0
-
-                if terminal:
-                    cnt_quest_complete += 1
-                    break
+                if terminal: break
 
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
-            quests_complete.append(1 if terminal else 0)
+            quests_complete.append(int(r >= 1))
             scores.append(ep_reward)
 
             if args.csv:
