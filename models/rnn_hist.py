@@ -4,57 +4,62 @@ import numpy as np
 import keras.backend as K
 
 from keras.layers import Input, Dense, Embedding, LSTM, SimpleRNN
-from keras.layers import GlobalAveragePooling1D, merge
+from keras.layers import GlobalAveragePooling1D, merge, Flatten
 from keras.layers import TimeDistributed
-from keras.optimizers import RMSprop
+from keras.optimizers import RMSprop, Nadam
 from keras.models import Model
+from keras.utils.visualize_util import plot
 
 from ad_model import ActionDecisionModel
 
 class HistoryQLearner(ActionDecisionModel):
-    def __init__(self,  seq_len, vocab_size, embedding_size, hist_size,
-                        hidden1_size, hidden2_size,
+    def __init__(self,  seq_len, vocab_size, embd_size, hist_size,
+                        hidden1, hidden2,
                         num_actions, num_objects,
-                        alpha,gamma):
+                        alpha,gamma,exp_id="model"):
         self.seq_length = seq_len
         self.vocab_size = vocab_size
-        self.embd_size = embedding_size
+        self.embd_size = embd_size
         self.hist_size = hist_size
-        self.h1 = hidden1_size
-        self.h2 = hidden2_size
+        self.h1 = hidden1
+        self.h2 = hidden2
         self.action_size = num_actions
         self.object_size = num_objects
 
         self.alpha = alpha
         self.gamma = gamma
 
-        self.model = self.defineModels_old()
-
-        self.model.compile(loss="mse",optimizer="nadam")
+        self.model = self.defineModels()
+        self.model.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
+        plot(self.model, show_shapes=True, to_file=exp_id+'.png')
 
     def defineModels(self):
-        x = Input(shape=(self.hist_size,self.seq_length,), dtype="int32") # (STATES x SEQUENCE)
+        x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
         # State Representation
         w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
                         input_dim=self.vocab_size,
                         input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
-        w_k = TimeDistributed(LSTM(self.h1, activation="relu", return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
+        w_k = TimeDistributed(LSTM(self.h1,  return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
         v_s = TimeDistributed(LSTM(self.h1, activation="relu"), name="lstm2")(w_k) # (STATES x H1)
-        embd_model = Model(input=x,output=v_s)
         # history based Q function approximation
-        q = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
+        q_hidden = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
         # action value
-        q_sa = Dense(self.action_size, name="action_dense")(q) # (ACTIONS)
+        qsa = Dense(self.action_size, name="action_dense")(q_hidden) # (ACTIONS)
         # object value
-        q_so = Dense(self.object_size, name="object_dense")(q) # (OBJECTS)
-        q_model = Model(input=x,output=[q_sa,q_so])
+        qso = Dense(self.object_size, name="object_dense")(q_hidden) # (OBJECTS)
 
-        return q_model, embd_model
+        q = merge(  [qsa,qso],
+                    mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
+                    output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
+
+        q_model = Model(input=x,output=q)
+
+        return q_model
 
     def defineModels_old(self):
         x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
         # State Representation
-        w_k = TimeDistributed(Embedding(output_dim=self.embd_size,
+        w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
                         input_dim=self.vocab_size,
                         input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
         x_k = TimeDistributed(LSTM(self.h1, return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
@@ -90,7 +95,7 @@ class HistoryQLearner(ActionDecisionModel):
         q = self.predictQval(s)
         return q.max(axis=(1,2))
 
-    def trainOnBatch(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
+    def calculateTargets(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
         batch_size = s_batch.shape[0]
         # split action tuple
         act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
@@ -106,6 +111,10 @@ class HistoryQLearner(ActionDecisionModel):
             else:
                 # reward + gamma * max a'{ Q(s', a') }
                 target[k,a,o] = r_batch[k] + self.gamma * qmax[k]
+        return target
+
+    def trainOnBatch(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
+        target = self.calculateTargets(s_batch,a_batch,r_batch,t_batch,s2_batch)
         loss = self.model.train_on_batch(s_batch,target)
         return loss
 

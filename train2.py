@@ -38,8 +38,7 @@ if __name__ == "__main__":
     model = HistoryQLearner(seq_len,vocab_size,args.embd_size,hist_size,
                         args.hidden1,args.hidden2,
                         num_actions,num_objects,
-                        args.alpha,args.gamma)
-
+                        args.alpha,args.gamma,args.exp_id)
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
 
@@ -63,7 +62,7 @@ if __name__ == "__main__":
             # get initial input
             init_s_text = env.reset()
             s = sent2seq(init_s_text, seq_len)
-            h = initHist(s,hist_size)
+            h = initHist(s,hist_size,False)
             #
             for j in xrange(args.max_ep_steps):
                 step_ctr += 1
@@ -95,7 +94,7 @@ if __name__ == "__main__":
                     step_ctr = 0
 
                 s = s2
-                h1 = h2
+                h = h2
                 ep_reward += r
                 cnt_invalid_actions += 1 if r == -0.1 else 0
 
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
             quests_complete.append(int(terminal and r >= 1))
-            deaths.append(int(terminal and r <= 0))
+            deaths.append(int(terminal and r <= -1))
             scores.append(ep_reward)
 
             sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
@@ -113,7 +112,7 @@ if __name__ == "__main__":
                             "quest_complete" : quests_complete[-1],
                             "death" : deaths[-1], "mode" : "train",
                             "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        print("> Training   {:03d} | len {:02.2f} | inval {:02.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
+        print("> Training   {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
@@ -136,7 +135,7 @@ if __name__ == "__main__":
             env_eval.seed(seed)
             init_s_text = env_eval.reset()
             s = sent2seq(init_s_text, seq_len)
-            h = initHist(s,hist_size)
+            h = initHist(s,hist_size,False)
             #
             for j in xrange(args.max_ep_steps):
                 # show textual input if so
@@ -146,7 +145,7 @@ if __name__ == "__main__":
                     a = model.randomAction()
                 else:
                     a = model.predictAction(h)
-                plan.append(env.get_action(a))
+                plan.append(env_eval.get_action(a))
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)
@@ -163,7 +162,7 @@ if __name__ == "__main__":
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
             quests_complete.append(int(terminal and r >= 1))
-            deaths.append(int(terminal and r <= 0))
+            deaths.append(int(terminal and r <= -1))
             scores.append(ep_reward)
             sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
                             "length" : ep_lens[-1], "invalids" : invalids[-1],
@@ -171,7 +170,7 @@ if __name__ == "__main__":
                             "quest_complete" : quests_complete[-1],
                             "death" : deaths[-1], "mode" : "eval",
                             "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        print("> Evaluation {:03d} | len {:.2f} | inval {:.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
+        print("> Evaluation {:03d} | len {:4.2f} | inval {:4.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
