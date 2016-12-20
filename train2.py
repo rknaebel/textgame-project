@@ -56,7 +56,6 @@ if __name__ == "__main__":
         # TRAIN Phase
         #
         for episode in range(args.episodes_per_epoch):
-            model.updateWeights()
             loss = 0.
             plan = []
             cnt_invalid_actions = 0

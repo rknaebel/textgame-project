@@ -9,6 +9,7 @@ import keras.backend.tensorflow_backend as KTF
 from keras.layers import Input, Dense, Embedding, LSTM, SimpleRNN
 from keras.layers import GlobalAveragePooling1D, merge, Flatten
 from keras.layers import TimeDistributed
+from keras.objectives import mean_squared_error
 from keras.optimizers import RMSprop, Nadam
 from keras.models import Model
 from keras.utils.visualize_util import plot
@@ -39,39 +40,45 @@ class HistoryQLearner(ActionDecisionModel):
         with tf.device("/gpu:0"):
             self.model_gpu = self.defineModels()
         self.model_cpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
+
         self.model_gpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
         plot(self.model_cpu, show_shapes=True, to_file=exp_id+'.png')
         #
         #
         #
         sess = KTF.get_session()
-        for layer in self.model_gpu.layers:
-            for weight in layer.weights:
-                tf.summary.histogram(weight.name,weight)
-            if hasattr(layer, 'output'):
-                tf.summary.histogram('{}_out'.format(layer.name),layer.output)
+        tf.summary.scalar("loss", self.model_gpu.total_loss)
+        #for layer in self.model_gpu.layers:
+        #    for weight in layer.weights:
+        #        tf.summary.histogram(weight.name,weight)
+        #    if hasattr(layer, 'output'):
+        #        tf.summary.histogram('{}_out'.format(layer.name),layer.output)
         self.merged = tf.summary.merge_all()
         self.writer = tf.summary.FileWriter("logs",sess.graph)
 
 
     def defineModels(self):
-        x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
-        # State Representation
-        w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
-                        input_dim=self.vocab_size,
-                        input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
-        w_k = TimeDistributed(LSTM(self.h1,  return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
-        v_s = TimeDistributed(LSTM(self.h1, activation="relu"), name="lstm2")(w_k) # (STATES x H1)
+        with tf.name_scope("input"):
+            x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
+        with tf.name_scope("state_embd"):
+            w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
+                            input_dim=self.vocab_size,
+                            input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
+            w_k = TimeDistributed(LSTM(self.h1,  return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
+            v_s = TimeDistributed(LSTM(self.h1, activation="relu"), name="lstm2")(w_k) # (STATES x H1)
         # history based Q function approximation
-        q_hidden = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
+        with tf.name_scope("q_function"):
+            q_hidden = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
         # action value
-        qsa = Dense(self.action_size, name="action_dense")(q_hidden) # (ACTIONS)
+        with tf.name_scope("action_value"):
+            qsa = Dense(self.action_size, name="action_dense")(q_hidden) # (ACTIONS)
         # object value
-        qso = Dense(self.object_size, name="object_dense")(q_hidden) # (OBJECTS)
-
-        q = merge(  [qsa,qso],
-                    mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
-                    output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
+        with tf.name_scope("object_value"):
+            qso = Dense(self.object_size, name="object_dense")(q_hidden) # (OBJECTS)
+        with tf.name_scope("merged_value"):
+            q = merge(  [qsa,qso],
+                        mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
+                        output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
 
         q_model = Model(input=x,output=q)
 
@@ -104,8 +111,11 @@ class HistoryQLearner(ActionDecisionModel):
     def updateWeights(self):
         self.model_cpu.set_weights(self.model_gpu.get_weights())
 
-    def predictQval(self,s):
-        return self.model_cpu.predict(np.atleast_3d(s))
+    def predictQval(self,s,gpu=False):
+        if gpu:
+            return self.model_gpu.predict(np.atleast_3d(s))
+        else:
+            return self.model_cpu.predict(np.atleast_3d(s))
 
     def predictAction(self,s):
         q = self.predictQval([s])[0]
@@ -116,8 +126,8 @@ class HistoryQLearner(ActionDecisionModel):
         obj = np.random.randint(0, self.object_size)
         return (act,obj)
 
-    def predictQmax(self,s):
-        q = self.predictQval(s)
+    def predictQmax(self,s,gpu=False):
+        q = self.predictQval(s,gpu)
         return q.max(axis=(1,2))
 
     def calculateTargets(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
@@ -125,8 +135,8 @@ class HistoryQLearner(ActionDecisionModel):
         # split action tuple
         act_batch, obj_batch = a_batch[:,0], a_batch[:,1]
         # Calculate targets
-        target = self.predictQval(s_batch)
-        qmax = self.predictQmax(s2_batch)
+        target = self.predictQval(s_batch,gpu=True)
+        qmax = self.predictQmax(s2_batch,gpu=True)
         # discount state values using the calculated targets
         for k in xrange(batch_size):
             a,o = act_batch[k],obj_batch[k]

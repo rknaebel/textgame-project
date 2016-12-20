@@ -8,7 +8,10 @@ env/bin/python:
 	env/bin/pip install wheel
 	#env/bin/pip install --upgrade $(TF_BINARY_URL)
 	env/bin/pip install -r requirements.txt
-	env/bin/pip install -e ../gym-textgame
+	git clone git@github.com:Rene90/gym-textgame env/src/gym-textgame
+	git clone git@github.com:fchollet/keras env/src/keras
+	env/bin/pip install -e env/src/gym-textgame
+	env/bin/pip install -e env/src/keras
 
 clean:
 	rm -rfv bin develop-eggs dist downloads eggs env parts
