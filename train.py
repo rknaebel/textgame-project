@@ -43,7 +43,11 @@ if __name__ == "__main__":
     model = NeuralQLearner( seq_len,vocab_size,
                             args.embd_size,args.hidden1,args.hidden2,
                             num_actions,num_objects,
-                            args.alpha,args.gamma,args.batch_size)
+                            args.alpha,args.gamma,args.batch_size, "/gpu:0")
+    model2 = NeuralQLearner( seq_len,vocab_size,
+                            args.embd_size,args.hidden1,args.hidden2,
+                            num_actions,num_objects,
+                            args.alpha,args.gamma,args.batch_size, "/cpu:0")
 
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
@@ -117,6 +121,7 @@ if __name__ == "__main__":
         ep_lens = []
         invalids = []
         quests_complete = []
+        model2.model.set_weights(model.model.get_weights())
         for episode in range(args.episodes_per_epoch):
             cnt_invalid_actions = 0
             ep_reward = 0.
@@ -133,7 +138,7 @@ if __name__ == "__main__":
                 if np.random.rand() <= 0.05:
                     a = env_eval.action_space.sample()
                 else:
-                    a = model.predictAction(s)
+                    a = model2.predictAction(s)
                 # apply action, get rewards and new state s2
                 s2_text, r, terminal, info = env_eval.step(a)
                 s2 = sent2seq(s2_text, seq_len)

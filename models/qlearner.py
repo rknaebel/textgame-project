@@ -6,6 +6,8 @@
 #
 import numpy as np
 
+import tensorflow as tf
+
 # KERAS: neural network lib
 import keras.backend as K
 from keras.layers import Input, Dense, Embedding, LSTM
@@ -19,7 +21,7 @@ class NeuralQLearner(ActionDecisionModel):
     def __init__(self,  seq_len, vocab_size, embedding_size,
                         hidden1_size, hidden2_size,
                         num_actions, num_objects,
-                        alpha,gamma,batch_size):
+                        alpha,gamma,batch_size,device="/cpu:0"):
         self.seq_length = seq_len
         self.vocab_size = vocab_size
         self.embd_size = embedding_size
@@ -32,29 +34,32 @@ class NeuralQLearner(ActionDecisionModel):
         self.gamma = gamma
         self.batch_size = batch_size
 
+        self.device = device
+
         self.model = self.defineModels()
         self.model.compile(loss="mse",optimizer=Nadam())
 
     def defineModels(self):
-        x = Input(shape=(self.seq_length,), dtype="uint8")
-        # State Representation
-        w_k = Embedding(output_dim=self.embd_size,
-                        input_dim=self.vocab_size,
-                        input_length=self.seq_length)(x)
-        x_k = LSTM(self.h1, return_sequences=True)(w_k)
-        v_s = GlobalAveragePooling1D()(x_k)
-        # Q function approximation
-        q_hidden = Dense(self.h2, activation="relu")(v_s)
-        # action value
-        qsa = Dense(self.action_size)(q_hidden)
-        # object value
-        qso = Dense(self.object_size)(q_hidden)
+        with tf.device(self.device):
+            x = Input(shape=(self.seq_length,), dtype="uint8")
+            # State Representation
+            w_k = Embedding(output_dim=self.embd_size,
+                            input_dim=self.vocab_size,
+                            input_length=self.seq_length)(x)
+            x_k = LSTM(self.h1, return_sequences=True)(w_k)
+            v_s = GlobalAveragePooling1D()(x_k)
+            # Q function approximation
+            q_hidden = Dense(self.h2, activation="relu")(v_s)
+            # action value
+            qsa = Dense(self.action_size)(q_hidden)
+            # object value
+            qso = Dense(self.object_size)(q_hidden)
 
-        q = merge(  [qsa,qso],
-                    mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
-                    output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
+            q = merge(  [qsa,qso],
+                        mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
+                        output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
 
-        q_model = Model(input=x,output=q)
+            q_model = Model(input=x,output=q)
 
         return q_model
 

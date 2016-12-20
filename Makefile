@@ -3,11 +3,12 @@ TF_BINARY_URL = https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0
 all: env/bin/python
 
 env/bin/python:
-	virtualenv env -p python2.7 --no-site-packages
+	virtualenv env -p /usr/bin/python2.7 --no-site-packages
 	env/bin/pip install --upgrade pip
 	env/bin/pip install wheel
-	env/bin/pip install --upgrade $(TF_BINARY_URL)
+	#env/bin/pip install --upgrade $(TF_BINARY_URL)
 	env/bin/pip install -r requirements.txt
+	env/bin/pip install -e ../gym-textgame
 
 clean:
 	rm -rfv bin develop-eggs dist downloads eggs env parts
