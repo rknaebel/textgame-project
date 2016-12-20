@@ -16,12 +16,12 @@ from replay_buffer import PrioritizedReplayBuffer
 from preprocess import sent2seq, initHist, addHistoryState
 
 from arguments import getArguments
-from utils import initDB, sendDocDB, sendModelDB
+#from utils import initDB, sendDocDB, sendModelDB
 
 if __name__ == "__main__":
     args = getArguments()
 
-    es = initDB()
+    #es = initDB()
 
     # layer sizes
     epsilon = args.epsilon_start
@@ -39,10 +39,11 @@ if __name__ == "__main__":
                         args.hidden1,args.hidden2,
                         num_actions,num_objects,
                         args.alpha,args.gamma,args.exp_id)
+
     # Initialize replay memory
     replay_buffer = PrioritizedReplayBuffer(args.buffer_size, args.random_seed)
 
-    sendModelDB(es,args,args.exp_id)
+    #sendModelDB(es,args,args.exp_id)
     #sendWeigthsDB(es,model)
     step_ctr = 0
     for epoch in range(args.max_epochs):
@@ -55,6 +56,7 @@ if __name__ == "__main__":
         # TRAIN Phase
         #
         for episode in range(args.episodes_per_epoch):
+            model.updateWeights()
             loss = 0.
             plan = []
             cnt_invalid_actions = 0
@@ -106,19 +108,20 @@ if __name__ == "__main__":
             deaths.append(int(terminal and r <= -1))
             scores.append(ep_reward)
 
-            sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
-                            "length" : ep_lens[-1], "invalids" : invalids[-1],
-                            "epsilon" : epsilon, "reward" : scores[-1],
-                            "quest_complete" : quests_complete[-1],
-                            "death" : deaths[-1], "mode" : "train",
-                            "init_state" : init_s_text, "plan" : plan}, args.exp_id)
+            #sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
+            #                "length" : ep_lens[-1], "invalids" : invalids[-1],
+            #                "epsilon" : epsilon, "reward" : scores[-1],
+            #                "quest_complete" : quests_complete[-1],
+            #                "death" : deaths[-1], "mode" : "train",
+            #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
         print("> Training   {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(deaths),
             np.mean(scores)))
-
+        # updates cpu weights by gpu weights
+        model.updateWeights()
         #
         # EVAL Phase
         #
@@ -164,12 +167,12 @@ if __name__ == "__main__":
             quests_complete.append(int(terminal and r >= 1))
             deaths.append(int(terminal and r <= -1))
             scores.append(ep_reward)
-            sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
-                            "length" : ep_lens[-1], "invalids" : invalids[-1],
-                            "epsilon" : 0.05, "reward" : scores[-1],
-                            "quest_complete" : quests_complete[-1],
-                            "death" : deaths[-1], "mode" : "eval",
-                            "init_state" : init_s_text, "plan" : plan}, args.exp_id)
+            #sendDocDB(es, { "epoch" : epoch+1, "episode" : episode+1,
+            #                "length" : ep_lens[-1], "invalids" : invalids[-1],
+            #                "epsilon" : 0.05, "reward" : scores[-1],
+            #                "quest_complete" : quests_complete[-1],
+            #                "death" : deaths[-1], "mode" : "eval",
+            #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
         print("> Evaluation {:03d} | len {:4.2f} | inval {:4.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
