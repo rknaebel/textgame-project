@@ -39,22 +39,21 @@ class HistoryQLearner(ActionDecisionModel):
             self.model_cpu = self.defineModels()
         with tf.device("/gpu:0"):
             self.model_gpu = self.defineModels()
-        self.model_cpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
+            self.model_gpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
 
-        self.model_gpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
         plot(self.model_cpu, show_shapes=True, to_file=exp_id+'.png')
         #
         #
         #
-        sess = KTF.get_session()
-        tf.summary.scalar("loss", self.model_gpu.total_loss)
+        #sess = KTF.get_session()
+        #tf.summary.scalar("loss", self.model_gpu.total_loss)
         #for layer in self.model_gpu.layers:
         #    for weight in layer.weights:
         #        tf.summary.histogram(weight.name,weight)
         #    if hasattr(layer, 'output'):
         #        tf.summary.histogram('{}_out'.format(layer.name),layer.output)
-        self.merged = tf.summary.merge_all()
-        self.writer = tf.summary.FileWriter("logs",sess.graph)
+        #self.merged = tf.summary.merge_all()
+        #self.writer = tf.summary.FileWriter("logs",sess.graph)
 
 
     def defineModels(self):
@@ -149,13 +148,13 @@ class HistoryQLearner(ActionDecisionModel):
         return target
 
     def trainOnBatch(self,s_batch,a_batch,r_batch,t_batch,s2_batch):
-        sess = KTF.get_session()
+        #sess = KTF.get_session()
         self.epoch += 1
         target = self.calculateTargets(s_batch,a_batch,r_batch,t_batch,s2_batch)
         loss = self.model_gpu.train_on_batch(s_batch,target)
-        summary = sess.run([self.merged], feed_dict={self.model_gpu.input:s_batch, self.model_gpu.output:target})
-        self.writer.add_summary(summary[0],self.epoch)
-        self.writer.flush()
+        #summary = sess.run([self.merged], feed_dict={self.model_gpu.input:s_batch, self.model_gpu.output:target})
+        #self.writer.add_summary(summary[0],self.epoch)
+        #self.writer.flush()
         return loss
 
     def save(self,name,overwrite):
