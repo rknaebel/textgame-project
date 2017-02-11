@@ -10,7 +10,7 @@ from keras.layers import Input, Dense, Embedding, LSTM, SimpleRNN
 from keras.layers import GlobalAveragePooling1D, merge, Flatten
 from keras.layers import TimeDistributed
 from keras.objectives import mean_squared_error
-from keras.optimizers import RMSprop, Nadam
+from keras.optimizers import RMSprop, Adam, Nadam
 from keras.models import Model
 from keras.utils.visualize_util import plot
 
@@ -35,11 +35,19 @@ class HistoryQLearner(ActionDecisionModel):
 
         self.epoch  = 0
 
-        with tf.device("/cpu:0"):
-            self.model_cpu = self.defineModels()
-        with tf.device("/gpu:0"):
-            self.model_gpu = self.defineModels()
-            self.model_gpu.compile(loss="mse",optimizer=Nadam(clipvalue=0.1))
+        self.two_dev = False
+        
+        if self.two_dev:        
+            with tf.device("/cpu:0"):
+                self.model_cpu = self.defineModels()
+            with tf.device("/gpu:0"):
+                self.model_gpu = self.defineModels()
+                self.model_gpu.compile(loss="mse",optimizer=Adam())
+        else:
+            with tf.device("/cpu:0"):
+                self.model_cpu = self.defineModels()
+                self.model_gpu = self.model_cpu
+                self.model_cpu.compile(loss="mse",optimizer=Adam())
 
         plot(self.model_cpu, show_shapes=True, to_file=exp_id+'.png')
         #
@@ -83,32 +91,33 @@ class HistoryQLearner(ActionDecisionModel):
 
         return q_model
 
-    def defineModels_old(self):
-        with tf.device(self.device):
-            x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
-            # State Representation
-            w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
-                            input_dim=self.vocab_size,
-                            input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
-            x_k = TimeDistributed(LSTM(self.h1, return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
-            v_s = TimeDistributed(GlobalAveragePooling1D(), name="avg")(x_k) # (STATES x H1)
-            # history based Q function approximation
-            q_hidden = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
-            # action value
-            qsa = Dense(self.action_size, name="action_dense")(q_hidden) # (ACTIONS)
-            # object value
-            qso = Dense(self.object_size, name="object_dense")(q_hidden) # (OBJECTS)
-
-            q = merge(  [qsa,qso],
-                        mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
-                        output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
-
-            q_model = Model(input=x,output=q)
-
-        return q_model
+#    def defineModels_old(self):
+#        with tf.device(self.device):
+#            x = Input(shape=(self.hist_size,self.seq_length,), dtype="uint8") # (STATES x SEQUENCE)
+#            # State Representation
+#            w_k = TimeDistributed(Embedding(output_dim=self.embd_size, mask_zero=True,
+#                            input_dim=self.vocab_size,
+#                            input_length=self.seq_length), name="embedding")(x) # (STATES x SEQUENCE x EMBEDDING)
+#            x_k = TimeDistributed(LSTM(self.h1, return_sequences=True), name="lstm1")(w_k) # (STATES x SEQUENCE x H1)
+#            v_s = TimeDistributed(GlobalAveragePooling1D(), name="avg")(x_k) # (STATES x H1)
+#            # history based Q function approximation
+#            q_hidden = SimpleRNN(self.h2, activation="relu", name="history_rnn")(v_s) # (H2)
+#            # action value
+#            qsa = Dense(self.action_size, name="action_dense")(q_hidden) # (ACTIONS)
+#            # object value
+#            qso = Dense(self.object_size, name="object_dense")(q_hidden) # (OBJECTS)
+#
+#            q = merge(  [qsa,qso],
+#                        mode=lambda x: (K.expand_dims(x[0],2)+K.expand_dims(x[1],1))/2,
+#                        output_shape=lambda x: (x[0][0],x[0][1],x[1][1]))
+#
+#            q_model = Model(input=x,output=q)
+#
+#        return q_model
 
     def updateWeights(self):
-        self.model_cpu.set_weights(self.model_gpu.get_weights())
+        if self.two_dev:
+            self.model_cpu.set_weights(self.model_gpu.get_weights())
 
     def predictQval(self,s,gpu=False):
         if gpu:

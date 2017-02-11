@@ -29,6 +29,7 @@ if __name__ == "__main__":
 
     env = gym.make(args.env)
     env_eval = gym.make(args.env)
+    env_eval.set_mode("eval")
     num_actions = env.num_actions
     num_objects = env.num_objects
     vocab_size  = env.vocab_space
@@ -100,7 +101,7 @@ if __name__ == "__main__":
                 cnt_invalid_actions += 1 if r == -0.1 else 0
 
                 if terminal: break
-
+            
             ep_lens.append(j+1)
             invalids.append(cnt_invalid_actions)
             quests_complete.append(int(terminal and r >= 1))
@@ -113,7 +114,8 @@ if __name__ == "__main__":
             #                "quest_complete" : quests_complete[-1],
             #                "death" : deaths[-1], "mode" : "train",
             #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        print("> Training   {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:.2f} | r {: .2f} ".format(
+        env_eval.log_nextEpoch()
+        print("> Training   {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
@@ -172,7 +174,8 @@ if __name__ == "__main__":
             #                "quest_complete" : quests_complete[-1],
             #                "death" : deaths[-1], "mode" : "eval",
             #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        print("> Evaluation {:03d} | len {:4.2f} | inval {:4.2f} | quests {:.2f} | deaths {:.2f} | r {: .2f} ".format(
+        env_eval.log_nextEpoch()
+        print("> Evaluation {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
