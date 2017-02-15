@@ -16,10 +16,17 @@ from replay_buffer import PrioritizedReplayBuffer
 from preprocess import sent2seq, initHist, addHistoryState
 
 from arguments import getArguments
+import csv
+
 #from utils import initDB, sendDocDB, sendModelDB
 
 if __name__ == "__main__":
     args = getArguments()
+
+    csv_fh_stats = open("logs/{}.stats.csv".format(args.csv), "wb")
+    csv_stats = csv.writer(csv_fh_stats, delimiter=",", quotechar="'", quoting=csv.QUOTE_MINIMAL)
+    csv_header = ["epoch", "mode", "len", "invalids", "quests_complete", "deaths", "score"]
+    csv_stats.writerow(csv_header)
 
     #es = initDB()
 
@@ -28,8 +35,10 @@ if __name__ == "__main__":
     epsilon_step = (args.epsilon_start-args.epsilon_end)/args.epsilon_anneal_steps
 
     env = gym.make(args.env)
+    env.set_csv_file(args.csv)
     env_eval = gym.make(args.env)
     env_eval.set_mode("eval")
+    env_eval.set_csv_file(args.csv)
     num_actions = env.num_actions
     num_objects = env.num_objects
     vocab_size  = env.vocab_space
@@ -114,13 +123,17 @@ if __name__ == "__main__":
             #                "quest_complete" : quests_complete[-1],
             #                "death" : deaths[-1], "mode" : "train",
             #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        env_eval.log_nextEpoch()
         print("> Training   {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(deaths),
             np.mean(scores)))
+        csv_stats.writerow([epoch+1, 0, np.mean(ep_lens),
+            np.mean(invalids),
+            np.mean(quests_complete),
+            np.mean(deaths),
+            np.mean(scores)])
         # updates cpu weights by gpu weights
         model.updateWeights()
         #
@@ -174,14 +187,21 @@ if __name__ == "__main__":
             #                "quest_complete" : quests_complete[-1],
             #                "death" : deaths[-1], "mode" : "eval",
             #                "init_state" : init_s_text, "plan" : plan}, args.exp_id)
-        env_eval.log_nextEpoch()
         print("> Evaluation {:03d} | len {: 4.2f} | inval {: 4.2f} | quests {:02.2f} | deaths {:02.2f} | r {: .2f} ".format(
             epoch+1, np.mean(ep_lens),
             np.mean(invalids),
             np.mean(quests_complete),
             np.mean(deaths),
             np.mean(scores)))
+        csv_stats.writerow([epoch+1, 1, np.mean(ep_lens),
+            np.mean(invalids),
+            np.mean(quests_complete),
+            np.mean(deaths),
+            np.mean(scores)])
         # Save trained model weights and architecture, this will be used by the visualization code
         model.save("model.h5", overwrite=True)
+        # set env log to next epoch
+        env.log_nextEpoch()
+        env_eval.log_nextEpoch()
     #with open("model.json", "w") as outfile:
     #    json.dump(model.to_json(), outfile)
