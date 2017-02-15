@@ -15,22 +15,32 @@ import sys
 
 # Procedures
 def spline_plot(x,y_train,y_eval,l,csv_file):
-    plt.figure(figsize=(10, 8), dpi=100)
-    
+    plt.figure(figsize=(20, 10), dpi=100)
+    plt.ylim(ymin=0)
+    plt.xlim(xmin=10,xmax=200)
+    #plt.axes().set_aspect('equal')
+    #plt.axis([0,1000,0,1000])
+
     #xvals = np.linspace(x.min(),x.max(),2000)
     #f1 = interp1d(x,y1,kind="cubic")
     #f2 = interp1d(x,y2,kind="cubic")
     #plt.plot(xvals, f1(xvals), label=l)
     #plt.plot(xvals, f2(xvals), label=l)
     
+    mean_train = y_train.rolling(10).mean()
+    std_train  = y_train.rolling(10).std()
     mean_eval = y_eval.rolling(10).mean()
     std_eval  = y_eval.rolling(10).std()
     
-    plt.plot(x,y_train, alpha=0.2)
+    #plt.plot(x,y_train, alpha=0.2)
     
-    plt.plot(x,y_eval, color='g', alpha=0.2)
-    plt.plot(x,mean_eval)
-    plt.fill_between(x, mean_eval-std_eval, mean_eval+std_eval, color='b', alpha=0.1)
+    #plt.plot(x,y_eval, color='g', alpha=0.2)
+    
+    plt.plot(x,mean_train, color="grey")
+    plt.fill_between(x, mean_train-std_train, mean_train+std_train, color='grey', alpha=0.1)
+    
+    plt.plot(x,mean_eval, color="r")
+    plt.fill_between(x, mean_eval-std_eval, mean_eval+std_eval, color='r', alpha=0.1)
     
     plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
            ncol=5, mode="expand", borderaxespad=0.)
