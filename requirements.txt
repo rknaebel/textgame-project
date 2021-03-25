@@ -11,7 +11,7 @@ pbr==1.10.0
 plac==0.9.6
 preshed==0.46.4
 protobuf==3.1.0
-PyYAML==3.12
+PyYAML==5.4
 scipy==0.18.1
 semver==2.7.2
 six==1.10.0
