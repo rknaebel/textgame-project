@@ -20,5 +20,5 @@ sputnik==0.9.3
 tensorflow==0.12.0rc0
 Theano==0.8.2
 thinc==5.0.8
-ujson==1.35
+ujson==5.2.0
 urllib3==1.19.1
