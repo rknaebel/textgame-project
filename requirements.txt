@@ -5,7 +5,7 @@ funcsigs==1.0.2
 Keras==1.1.2
 mock==2.0.0
 murmurhash==0.26.4
-numpy==1.11.2
+numpy==1.22.0
 pathlib==1.0.1
 pbr==1.10.0
 plac==0.9.6
